@@ -137,30 +137,36 @@ extern "C" __declspec(dllexport) int main_imgui(const char* window_title, void (
 
 	// Main loop
 	bool done = false;
+	static bool movement = false;
+	SDL_Event event;
 #ifdef __EMSCRIPTEN__
 	// For an Emscripten build we are disabling file-system access, so let's not attempt to do a fopen() of the imgui.ini file.
 	// You may manually call LoadIniSettingsFromMemory() to load settings from your own storage.
 	io.IniFilename = nullptr;
 	EMSCRIPTEN_MAINLOOP_BEGIN
 #else
-	while (!done)
+	while (!done && SDL_WaitEvent(&event))
 #endif
 	{
 		// Poll and handle events (inputs, window resize, etc.)
-		// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-		// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-		// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-		// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
-		// [If using SDL_MAIN_USE_CALLBACKS: call ImGui_ImplSDL3_ProcessEvent() from your SDL_AppEvent() function]
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
-		{
-			ImGui_ImplSDL3_ProcessEvent(&event);
-			if (event.type == SDL_EVENT_QUIT)
+        // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+        // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+        // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+        // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+        
+        // Pass to ImGui
+        movement = ImGui_ImplSDL3_ProcessEvent(&event);
+
+        // Handle Event Type
+        switch (event.type)
+        {
+            case SDL_EVENT_QUIT:
+                done = true;
+                break;
+			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
 				done = true;
-			if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window))
-				done = true;
-		}
+				break;
+        }  // switch
 
 		// [If using SDL_MAIN_USE_CALLBACKS: all code below would likely be your SDL_AppIterate() function]
 		if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
