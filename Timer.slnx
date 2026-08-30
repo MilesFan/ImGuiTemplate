@@ -3,5 +3,6 @@
     <Platform Name="x64" />
   </Configurations>
   <Project Path="ImGuiScaffoldSDL3GL/ImGuiScaffoldSDL3GL.vcxproj" Id="22c382dd-7572-4268-a2ed-6d7234bfcbc3" />
-  <Project Path="App/App.vcxproj" Id="27c43e7a-8015-44d8-9776-764f963bbe7d" />
+  <Project Path="Model/Model.vcxproj" Id="63799cca-aa1f-496e-9f20-095f34c06263" />
+  <Project Path="Timer/Timer.vcxproj" Id="27c43e7a-8015-44d8-9776-764f963bbe7d" />
 </Solution>

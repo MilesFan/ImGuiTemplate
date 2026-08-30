@@ -125,6 +125,10 @@ extern "C" __declspec(dllexport) int main_imgui(const char* window_title, void (
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf");
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf");
 	//IM_ASSERT(font != nullptr);
+	ImFontConfig config;
+	config.MergeMode = true;
+	ImFont* font1 = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\arial.ttf", 14.f);
+	ImFont* font2 = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 14.f, &config);
 
 	// Our state
 	bool show_demo_window = true;
