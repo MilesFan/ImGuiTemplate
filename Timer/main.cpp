@@ -21,8 +21,23 @@ static Task::Plan plan2(
 		make_time(2026, 8, 11),
 		make_time(2026, 8, 12)
 	});
-
-void drawCanvas()
+static std::vector<Task::Plan> plans = {
+	Task::Plan(
+	"Plan 1",
+	{
+		make_time(2026, 8, 1),
+		make_time(2026, 8, 2),
+		make_time(2026, 8, 3)
+	}),
+	Task::Plan(
+	"Plan 2",
+	{
+		make_time(2026, 8, 10),
+		make_time(2026, 8, 11),
+		make_time(2026, 8, 12)
+	})
+};
+static void drawCanvas()
 {
 	static ImVector<ImVec2> points;
 	static bool opt_enable_grid = true;
@@ -88,6 +103,7 @@ void drawCanvas()
 	{
 		scrolling.x += io.MouseDelta.x;
 		scrolling.y += io.MouseDelta.y;
+		if (scrolling.y > 0) scrolling.y = 0;
 		grid_offsetcells.x = scrolling.x / grid_size;
 		grid_offsetcells.y = scrolling.y / grid_size;
 	}
@@ -125,8 +141,36 @@ void drawCanvas()
 	draw_list->PopClipRect();
 	ImGui::SetCursorPos(cursorPos);
 }
-
-void mainloop()
+static void drawGanntView()
+{
+	static struct tm* tm_info;
+	static ImVec2 textPos = {};
+	static char buffer[50];
+	ImGui::PushClipRect(ImVec2(canvas_p0.x + grid_size, canvas_p0.y + grid_size), canvas_p1, false);
+	for (int i = 0; i < plans.size(); ++i)
+	{
+		tm_info = localtime(&plans[i].Dates[0]);
+		//sprintf_s(buffer, 50, "%s\0", ctime(&plans[i].Dates[0]));
+		strftime(buffer, sizeof(buffer), "%Y-%m-%d", tm_info);
+		auto textsize = ImGui::CalcTextSize(buffer);
+		textPos.x = grid_size * 1 + canvas_p0.x + scrolling.x;
+		textPos.y = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + (grid_size - textsize.y) * 0.5f;
+		ImGui::SetCursorPos(textPos);
+		ImGui::Text(buffer);
+	}
+	ImGui::PopClipRect();
+}
+static void showDebugWindow()
+{
+	ImGui::SetNextWindowPos(ImGui::GetIO().DisplaySize, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+	ImGui::Begin("Debug", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+	static long renderFrames = 0;
+	ImGui::PushFont(nullptr, 10.0f);
+	ImGui::Text("Frames = %6.ld", renderFrames++);
+	ImGui::PopFont();
+	ImGui::End();
+}
+static void mainloop()
 {
 	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
@@ -139,27 +183,14 @@ void mainloop()
 		textPos.y = cursorPos.y;
 		cursorPos = ImGui::GetCursorPos();
 		ImGui::PushFont(nullptr, 10.0f);
-		auto availRegion = ImGui::GetContentRegionAvail();
-		int i = -(int)(grid_offsetcells.x);
-		float b = - fmod(scrolling.x, grid_size);
 		ImGui::PushClipRect(canvas_p0, canvas_p1, false);
-
-		//int a = (int)(-scrolling.x / grid_size);
-		//float c = (-scrolling.x / grid_size);
-		//float d = 0;
-		//if (c< 0 && modf(c, &d) != 0)
-		//{
-		//	--a;
-		//}
 
 		auto fration = fmod(scrolling.x, grid_size);
 		if (fration > 0)
 			fration -= grid_size;
 		auto startN = (int)floor(- scrolling.x / grid_size);
-		auto startX = canvas_p0.x - fration;
 
-		int cnt = ceil((canvas_p1.x - canvas_p0.x) / grid_size) + (fration !=0? 1: 0);
-		int midCnt = cnt / 2;
+		int days = (int)ceil((canvas_p1.x - canvas_p0.x) / grid_size) + (fration !=0? 1: 0);
 
 		time_t now = time(NULL);
 		struct tm* tm_info = localtime(&now);
@@ -167,10 +198,10 @@ void mainloop()
 		tm_info->tm_min= 0;
 		tm_info->tm_sec = 0;
 		now = mktime(tm_info);
-		tm_info->tm_mday += startN - midCnt;
+		tm_info->tm_mday += startN - (days / 2);
 		static tm* new_tm_info = {};
 		static time_t new_time;
-		for(int i = 0; i< cnt; ++i)
+		for(int i = 0; i< days; ++i)
 		{
 			static char buffer[5];
 			tm_info->tm_mday++;
@@ -191,83 +222,16 @@ void mainloop()
 			}
 			cursorPos.x += grid_size;
 		}
-		int endN = startN + cnt - 1;
-
-		static time_t today = std::time(nullptr);
-		ImGui::SetNextWindowPos((ImGui::GetContentRegionAvail() + ImGui::GetCursorScreenPos() - ImGui::GetWindowPos()), ImGuiCond_Always, ImVec2(1.0f, 1.0f));
-		ImGui::Begin("test", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
-		ImGui::Text("scrolling.x = %f", scrolling.x);
-		ImGui::Text("canvas_p0.x = %f", canvas_p0.x);
-		ImGui::Text("remaining pixels = %f", fration);
-		ImGui::Text("startN = %d", startN);
-		ImGui::Text("endN = %d", endN);
-		ImGui::Text("N = %d", cnt);
-		ImGui::Text("today = %s", ctime(&today));
-		static long renderFrames = 0;
-		++renderFrames;
-		ImGui::Text("Rendered Frames = %ld", renderFrames);
-		ImGui::End();
-
-		/*while (true && textPos.x < availRegion.x)
-		{
-			static char buffer[5];
-			sprintf_s(buffer, 5, "%d\0", i);
-			auto textsize = ImGui::CalcTextSize(buffer);
-			textPos.x = cursorPos.x + (grid_size - textsize.x) * 0.5f - b;
-			textPos.y = cursorPos.y + (grid_size - textsize.y) * 0.5f;
-			ImGui::SetCursorPos(textPos);
-			ImGui::Text(buffer);
-			cursorPos.x += grid_size;
-			i++;
-		}*/
+		drawGanntView();
 		ImGui::PopClipRect();
 		ImGui::PopFont();
-		//static std::string planId = ulid::Marshal(plan1.Id);
-		////ImGui::Text("Task Id = %s", planId.c_str());
-		//ImGui::Text("%s", plan1.Name.c_str());
-		//for(int i = 0; i < plan1.Dates.size(); ++i)
-		//{
-		//	time_t date = plan1.Dates[i];
-		//	static char timeString[std::size("yyyy-mm-dd")];
-		//	std::strftime(std::data(timeString), std::size(timeString),
-		//		"%F", std::gmtime(&date));
-		//	ImGui::SetCursorPos(ImVec2(200, 800 + i * 20));
-		//	ImGui::Text("%s", timeString);
-		//}
-		//ImGui::Text("%zu", plan1.Dates.size());
-		//ImGui::Text("%s", "Kanjis: 第三方");
-		////ImGui::Text("Task 第三方Name = %ws", plan1.Name.c_str());
-		//static bool show_about = false;
-		//if (ImGui::Button("Click me"))
-		//{
-		//	show_about = true;
-		//}
-		//if (show_about)
-		//	ImGui::OpenPopup("About");
-
-		//if (ImGui::BeginPopupModal("About", &show_about, ImGuiWindowFlags_AlwaysAutoResize))
-		//{
-		//	ImGui::Text("This is an example of a modal popup.");
-		//	if (ImGui::Button("Close"))
-		//	{
-		//		plan1.Dates.push_back(3);
-		//		show_about = false;
-		//		ImGui::CloseCurrentPopup();
-		//	}
-		//	ImGui::EndPopup();
-		//}
-
 	}
-		ImGui::End();
+	ImGui::End();
+	showDebugWindow();
 }
 
 int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_opt_ HINSTANCE hInstPrev, _In_ PSTR cmdline, _In_ int cmdshow)
 {
-	//plan1.Name = "喝水";
-	//plan1.Dates.push_back(1);
-	//plan1.Dates.push_back(2);
-	//plan1.Dates.push_back(3);
-	//plan1.Dates.erase(plan1.Dates.begin() + 1);
 	main_imgui("Hello World!", mainloop);
 	return 0;
 }
