@@ -203,8 +203,9 @@ void mainloop()
 		ImGui::Text("endN = %d", endN);
 		ImGui::Text("N = %d", cnt);
 		ImGui::Text("today = %s", ctime(&today));
-		ImGuiIO& io = ImGui::GetIO(); (void)io;
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+		static long renderFrames = 0;
+		++renderFrames;
+		ImGui::Text("Rendered Frames = %ld", renderFrames);
 		ImGui::End();
 
 		/*while (true && textPos.x < availRegion.x)
