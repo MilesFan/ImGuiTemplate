@@ -137,6 +137,7 @@ extern "C" __declspec(dllexport) int main_imgui(const char* window_title, void (
 
 	// Main loop
 	bool done = false;
+	int moreframes = 0;
 	static bool movement = false;
 	SDL_Event event;
 #ifdef __EMSCRIPTEN__
@@ -145,9 +146,22 @@ extern "C" __declspec(dllexport) int main_imgui(const char* window_title, void (
 	io.IniFilename = nullptr;
 	EMSCRIPTEN_MAINLOOP_BEGIN
 #else
-	while (!done && SDL_WaitEvent(&event))
+	while (!done || moreframes>0)
 #endif
 	{
+		if (moreframes)
+		{
+			moreframes--;
+			SDL_PollEvent(&event);
+		}
+		else if (SDL_WaitEvent(&event))
+		{
+			moreframes = 1;
+		}
+		else
+		{
+			continue;
+		}
 		// Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -161,9 +175,11 @@ extern "C" __declspec(dllexport) int main_imgui(const char* window_title, void (
         switch (event.type)
         {
             case SDL_EVENT_QUIT:
+				moreframes = 0;
                 done = true;
                 break;
 			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+				moreframes = 0;
 				done = true;
 				break;
         }  // switch
