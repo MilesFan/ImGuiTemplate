@@ -38,18 +38,25 @@ namespace Task
 		time_t ReportDate = 0;
 		Location Location = Location::Office;
 	};
+	class DayWork
+	{
+	public:
+		time_t Date = 0;
+		ulid::ULID PersonId = {};
+		std::string Person = {};
+		DayWork(std::string Person, time_t Date) : Person(std::move(Person)), Date(Date) {}
+	};
 	class Plan {
 	public:
 		ulid::ULID Id = {};
-		ulid::ULID PersonId = {};
 		std::string Name = {};
-		std::vector<time_t> Dates = {};
+		std::vector<DayWork> DayWorks = {};
 		float Hours = 0.0f;
 		float ProgressPercentage = 0.0f;
 		std::vector<Progress> Progresses = {};
 		Status Status = Status::NotStarted;
 		Plan();
-		Plan(std::string Name, std::vector<time_t> Dates) : Name(std::move(Name)), Dates(std::move(Dates)) {}
+		Plan(std::string Name, std::vector<DayWork> DayWorks) : Name(std::move(Name)), DayWorks(std::move(DayWorks)) {}
 	};
 }
 #endif // !PLAN_H
