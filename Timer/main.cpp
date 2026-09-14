@@ -43,9 +43,9 @@ static std::vector<Task::Plan> plans = {
 		Task::WorkGroup(
 			"箱盖",
 			{
-				Task::DayWork("樊兴华", make_time(2026, 10, 1)),
-				Task::DayWork("樊兴华", make_time(2026, 10, 12)),
-				Task::DayWork("樊兴华", make_time(2026, 10, 23))
+				Task::DayWork("樊", make_time(2026, 10, 1)),
+				Task::DayWork("樊", make_time(2026, 10, 12)),
+				Task::DayWork("樊", make_time(2026, 10, 23))
 			}
 		),
 	}),
