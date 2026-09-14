@@ -46,7 +46,7 @@ namespace Task
 		std::string Person = {};
 		DayWork(std::string Person, time_t Date) : Person(std::move(Person)), Date(Date) {}
 	};
-	class Plan {
+	class WorkGroup {
 	public:
 		ulid::ULID Id = {};
 		std::string Name = {};
@@ -55,8 +55,20 @@ namespace Task
 		float ProgressPercentage = 0.0f;
 		std::vector<Progress> Progresses = {};
 		Status Status = Status::NotStarted;
+		WorkGroup();
+		WorkGroup(std::string Name, std::vector<DayWork> DayWorks) : Name(std::move(Name)), DayWorks(std::move(DayWorks)) {}
+	};
+	class Plan {
+	public:
+		ulid::ULID Id = {};
+		std::string Name = {};
+		std::vector<WorkGroup> WorkGroups = {};
+		float Hours = 0.0f;
+		float ProgressPercentage = 0.0f;
+		std::vector<Progress> Progresses = {};
+		Status Status = Status::NotStarted;
 		Plan();
-		Plan(std::string Name, std::vector<DayWork> DayWorks) : Name(std::move(Name)), DayWorks(std::move(DayWorks)) {}
+		Plan(std::string Name, std::vector<WorkGroup> WorkGroups) : Name(std::move(Name)), WorkGroups(std::move(WorkGroups)) {}
 	};
 }
 #endif // !PLAN_H
