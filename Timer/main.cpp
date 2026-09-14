@@ -1,10 +1,15 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "main.h"
 #include "custommath.h"
-const float grid_size = 64;
-static ImVec2 scrolling_real(0.0f, 0.0f);
+#include "./../ImGuiScaffoldSDL3GL/imgui/imgui_internal.h"
+//const float GRID_SIZE_H = 32;
+const float GRID_SIZE_H = 70;
+const float GRID_SIZE_V = 32;
+const int PLAN_NAME_CELLS = 2;
+const int TASK_GROUP_CELLS = 3;
+//static ImVec2 scrolling_real(0.0f, 0.0f);
 static ImVec2 scrolling(0.0f, 0.0f);
-static ImVec2 grid_offsetcells = {};
+//static ImVec2 grid_offsetcells = {};
 static ImVec2 canvas_p0 = {};
 static ImVec2 canvas_p1 = {};
 //static Task::GanntView view(make_time(2026, 8, 1), make_time(2026, 8, 30));
@@ -27,23 +32,41 @@ static std::vector<Task::Plan> plans = {
 	"Q881234",
 	//"Plan 1",
 	{
-		Task::DayWork("Q881234", make_time(2026, 9, 1)),
-		Task::DayWork("樊", make_time(2026, 9, 12)),
-		Task::DayWork("樊", make_time(2026, 9, 23))
+		Task::WorkGroup(
+			"线圈",
+			{
+				Task::DayWork("李", make_time(2026, 9, 13)),
+				Task::DayWork("李", make_time(2026, 9, 12)),
+				Task::DayWork("李", make_time(2026, 9, 23))
+			}
+		),
+		Task::WorkGroup(
+			"箱盖",
+			{
+				Task::DayWork("樊兴华", make_time(2026, 10, 1)),
+				Task::DayWork("樊兴华", make_time(2026, 10, 12)),
+				Task::DayWork("樊兴华", make_time(2026, 10, 23))
+			}
+		),
 	}),
 	Task::Plan(
 	"Q881235",
 	//"Plan 2",
 	{
-		Task::DayWork("张某某", make_time(2026, 9, 10)),
-		Task::DayWork("张某某", make_time(2026, 9, 11)),
-		Task::DayWork("张某某", make_time(2026, 9, 12))
+		Task::WorkGroup(
+			"引线",
+			{
+				Task::DayWork("张", make_time(2026, 9, 15)),
+				Task::DayWork("张", make_time(2026, 9, 10)),
+				Task::DayWork("张", make_time(2026, 9, 11)),
+				Task::DayWork("张", make_time(2026, 9, 12))
+			}
+		)
 	})
 };
 static void drawCanvas()
 {
 	static ImVector<ImVec2> points;
-	static bool opt_enable_grid = true;
 	static bool opt_enable_context_menu = true;
 
 	static ImVec2 rect_min = {};
@@ -79,7 +102,7 @@ static void drawCanvas()
 	draw_list->AddRect(canvas_p0, canvas_p1, IM_COL32(255, 255, 255, 255));
 
 	// This will catch our interactions
-	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
 	const bool is_hovered = ImGui::IsItemHovered(); // Hovered
 	const bool is_active = ImGui::IsItemActive();   // Held
 	//const ImVec2 origin(canvas_p0.x + scrolling.x, canvas_p0.y + scrolling.y); // Lock scrolled origin
@@ -104,15 +127,17 @@ static void drawCanvas()
 	const float mouse_threshold_for_pan = opt_enable_context_menu ? -1.0f : 0.0f;
 	if (is_active && ImGui::IsMouseDragging(ImGuiMouseButton_Left, mouse_threshold_for_pan))
 	{
+		static ImVec2 scrolling_real(0.0f, 0.0f);
 		scrolling_real.x += io.MouseDelta.x;
 		scrolling_real.y += io.MouseDelta.y;
 		if (scrolling_real.y > 0) scrolling_real.y = 0;
-		scrolling.x = roundf(scrolling_real.x / grid_size) * grid_size;
-		scrolling.y = roundf(scrolling_real.y / grid_size) * grid_size;
-		grid_offsetcells.x = scrolling.x / grid_size;
-		grid_offsetcells.y = scrolling.y / grid_size;
+		scrolling.x = roundf(scrolling_real.x / GRID_SIZE_H) * GRID_SIZE_H;
+		scrolling.y = roundf(scrolling_real.y / GRID_SIZE_V) * GRID_SIZE_V;
 	}
-
+	//static int wheel_counter = 0;
+	//if (is_active && ImGui::IsItemHovered()) {
+	//	wheel_counter += ImGui::GetIO().MouseWheel;
+	//}
 	// Context menu (under default mouse threshold)
 	ImVec2 drag_delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
 	if (opt_enable_context_menu && drag_delta.x == 0.0f && drag_delta.y == 0.0f)
@@ -134,25 +159,26 @@ static void drawCanvas()
 
 	// Draw grid + all lines in the canvas
 	draw_list->PushClipRect(canvas_p0, canvas_p1, true);
-	if (opt_enable_grid)
-	{
-		const float GRID_STEP = grid_size;
-		for (float x = fmodf(scrolling.x, GRID_STEP); x < canvas_sz.x; x += GRID_STEP)
-		{
-			if (x< GRID_STEP * 3)
-				draw_list->AddLineV(canvas_p0.x + GRID_STEP * 3, canvas_p0.y, canvas_p1.y, IM_COL32(200, 200, 200, 40));
-			else
-				draw_list->AddLineV(canvas_p0.x + x, canvas_p0.y, canvas_p1.y, IM_COL32(200, 200, 200, 40));
 
-		}
-		for (float y = fmodf(scrolling.y, GRID_STEP); y < canvas_sz.y; y += GRID_STEP)
-		{
-			if (y < grid_size)
-				draw_list->AddLineH(canvas_p0.x, canvas_p1.x, canvas_p0.y + GRID_STEP, IM_COL32(200, 200, 200, 80));
-			else
-				draw_list->AddLineH(canvas_p0.x, canvas_p1.x, canvas_p0.y + y, IM_COL32(200, 200, 200, 40));
-		}
+	//draw grid vertical lines
+	for (float x = fmodf(scrolling.x, GRID_SIZE_H); x < canvas_sz.x; x += GRID_SIZE_H)
+	{
+		if (x < GRID_SIZE_H * PLAN_NAME_CELLS)
+			draw_list->AddLineV(canvas_p0.x + GRID_SIZE_H * PLAN_NAME_CELLS, canvas_p0.y, canvas_p1.y, IM_COL32(200, 200, 200, 40));
+		else
+			draw_list->AddLineV(canvas_p0.x + x, canvas_p0.y, canvas_p1.y, IM_COL32(200, 200, 200, 40));
+
 	}
+
+	//draw grid horizontal lines
+	for (float y = fmodf(scrolling.y, GRID_SIZE_V); y < canvas_sz.y; y += GRID_SIZE_V)
+	{
+		if (y < GRID_SIZE_V)
+			draw_list->AddLineH(canvas_p0.x, canvas_p1.x, canvas_p0.y + GRID_SIZE_V, IM_COL32(200, 200, 200, 80));
+		else
+			draw_list->AddLineH(canvas_p0.x, canvas_p1.x, canvas_p0.y + y, IM_COL32(200, 200, 200, 40));
+	}
+
 	//for (int n = 0; n < points.Size; n += 2)
 	//	draw_list->AddRect(ImVec2(origin.x + points[n].x, origin.y + points[n].y), ImVec2(origin.x + points[n + 1].x, origin.y + points[n + 1].y), IM_COL32(255, 255, 0, 255), 2.0f);
 	draw_list->PopClipRect();
@@ -163,40 +189,60 @@ static void drawGanntView(time_t basetime)
 	static struct tm* tm_info;
 	static ImVec2 textPos = {};
 	static char buffer[50];
-
-	ImGui::PushClipRect(ImVec2(canvas_p0.x, canvas_p0.y + grid_size), canvas_p1, false);
+	float canvas_width = canvas_p1.x - canvas_p0.x - GRID_SIZE_H * PLAN_NAME_CELLS;
+	float half_canvas_width = ceil(canvas_width / 2 / GRID_SIZE_H) * GRID_SIZE_H;
+	ImGui::PushClipRect(ImVec2(canvas_p0.x, canvas_p0.y + GRID_SIZE_V), canvas_p1, false);
 	for (int i = 0; i < plans.size(); ++i)
 	{
 		auto textsize = ImGui::CalcTextSize(plans[i].Name.c_str());
-		textPos.x = canvas_p0.x  + (grid_size * 3 - textsize.x) * 0.5f;
-		textPos.y = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + (grid_size - textsize.y) * 0.5f;
+		textPos.x = canvas_p0.x  + (GRID_SIZE_H * PLAN_NAME_CELLS - textsize.x) * 0.5f;
+		textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * i + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
 		ImGui::SetCursorPos(textPos);
 		ImGui::Text(plans[i].Name.c_str());
 	}
 	ImGui::PopClipRect();
-	ImGui::PushClipRect(ImVec2(canvas_p0.x + grid_size * 3, canvas_p0.y + grid_size), canvas_p1, false);
+	ImGui::PushClipRect(ImVec2(canvas_p0.x + GRID_SIZE_H * PLAN_NAME_CELLS, canvas_p0.y + GRID_SIZE_V), canvas_p1, false);
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	for (int i = 0; i < plans.size(); ++i)
 	{
-		for (int j = 0; j < plans[i].DayWorks.size(); ++j)
+		for (int j = 0; j < plans[i].WorkGroups.size(); ++j)
 		{
+			//for (int k = 0; k < plans[i].WorkGroups[j].DayWorks.size(); ++k)
+			//{
+			//	auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].DayWorks[k].Person.c_str());
+			//	static double diff_seconds;
+			//	static int diff_days;
+			//	diff_seconds = difftime(plans[i].WorkGroups[j].DayWorks[k].Date, basetime);
+			//	diff_days = (int)(diff_seconds / (60 * 60 * 24));
+			//	textPos.x = canvas_p0.x + scrolling.x + grid_size * diff_days + (grid_size - textsize.x) * 0.5f + canvas_width * 0.5f;
+			//	textPos.y = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + (grid_size - textsize.y) * 0.5f;
+			//	ImGui::SetCursorPos(textPos);
+			//	int x0 = canvas_p0.x + scrolling.x + grid_size * diff_days + 3;
+			//	int y0 = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + 3;
+			//	int x1 = x0 + grid_size - 5;
+			//	int y1 = y0 + grid_size - 5;
+			//	//draw_list->AddRectFilled(ImVec2(x0,y0), ImVec2(x1,y1), IM_COL32(100, 100, 100, 255), 8);
+			//	ImGui::Text(plans[i].WorkGroups[j].DayWorks[k].Person.c_str());
+			//}
+			//if (plans[i].WorkGroups[j].DayWorks.size() == 0) continue;
 
-			//tm_info = localtime(&plans[i].Dates[j]);
-			//strftime(buffer, sizeof(buffer), "%Y-%m-%d", tm_info);
-			auto textsize = ImGui::CalcTextSize(plans[i].DayWorks[j].Person.c_str());
-			static double diff_seconds;
-			static int diff_days;
-			diff_seconds = difftime(plans[i].DayWorks[j].Date, basetime);
-			diff_days = (int)(diff_seconds / (60 * 60 * 24));
-			textPos.x = canvas_p0.x + scrolling.x + grid_size * diff_days + (grid_size - textsize.x) * 0.5f;
-			textPos.y = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + (grid_size - textsize.y) * 0.5f;
-			ImGui::SetCursorPos(textPos);
-			int x0 = canvas_p0.x + scrolling.x + grid_size * diff_days + 3;
-			int y0 = grid_size * 1 + grid_size * i + canvas_p0.y + scrolling.y + 3;
-			int x1 = x0 + grid_size - 5;
-			int y1 = y0 + grid_size - 5;
-			draw_list->AddRectFilled(ImVec2(x0,y0), ImVec2(x1,y1), IM_COL32(100, 100, 100, 255), 8);
-			ImGui::Text(plans[i].DayWorks[j].Person.c_str());
+			for (int k = 0; k < plans[i].WorkGroups[j].DayWorks.size(); ++k)
+			{
+				auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].DayWorks[k].Person.c_str());
+				static double diff_seconds;
+				static int diff_days;
+				diff_seconds = difftime(plans[i].WorkGroups[j].DayWorks[k].Date, basetime);
+				diff_days = (int)(diff_seconds / (60 * 60 * 24));
+				textPos.x = canvas_p0.x + scrolling.x + GRID_SIZE_H * diff_days + (GRID_SIZE_H - textsize.x) * 0.5f + half_canvas_width;
+				textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * i + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
+				ImGui::SetCursorPos(textPos);
+				int x0 = canvas_p0.x + scrolling.x + GRID_SIZE_H * diff_days + half_canvas_width + 3;
+				int y0 = GRID_SIZE_V * 1 + GRID_SIZE_V * i + canvas_p0.y + scrolling.y + 3;
+				int x1 = x0 + GRID_SIZE_H - 5;
+				int y1 = y0 + GRID_SIZE_V - 5;
+				draw_list->AddRectFilled(ImVec2(x0,y0), ImVec2(x1,y1), IM_COL32(100, 100, 100, 255), 0);
+				ImGui::Text(plans[i].WorkGroups[j].DayWorks[k].Person.c_str());
+			}
 		}
 	}
 	ImGui::PopClipRect();
@@ -223,15 +269,15 @@ static void mainloop()
 		textPos.x = 0;
 		textPos.y = cursorPos.y;
 		cursorPos = ImGui::GetCursorPos();
-		ImGui::PushFont(nullptr, 10.0f);
-		ImGui::PushClipRect(ImVec2(canvas_p0.x + grid_size * 3, canvas_p0.y), canvas_p1, false);
+		ImGui::PushFont(nullptr, 12.0f);
+		ImGui::PushClipRect(ImVec2(canvas_p0.x + GRID_SIZE_H * PLAN_NAME_CELLS, canvas_p0.y), canvas_p1, false);
 
-		auto fration = fmod(scrolling.x, grid_size);
+		auto fration = fmod(scrolling.x, GRID_SIZE_H);
 		if (fration > 0)
-			fration -= grid_size;
-		auto startN = (int)floor(- scrolling.x / grid_size);
+			fration -= GRID_SIZE_H;
+		auto startN = (int)floor(- scrolling.x / GRID_SIZE_H);
 
-		int days = (int)ceil((canvas_p1.x - canvas_p0.x) / grid_size) + (fration !=0? 1: 0);
+		int days = (int)ceil((canvas_p1.x - canvas_p0.x) / GRID_SIZE_H) + (fration !=0? 1: 0);
 
 		time_t now = time(NULL);
 		struct tm* tm_info = localtime(&now);
@@ -250,8 +296,8 @@ static void mainloop()
 			new_tm_info = localtime(&new_time);
 			sprintf_s(buffer, 5, "%d\0", new_tm_info->tm_mday);
 			auto textsize = ImGui::CalcTextSize(buffer);
-			textPos.x = canvas_p0.x + fration + grid_size * i + (grid_size - textsize.x) * 0.5f;
-			textPos.y = cursorPos.y + (grid_size - textsize.y) * 0.5f;
+			textPos.x = canvas_p0.x + fration + GRID_SIZE_H * i + (GRID_SIZE_H - textsize.x) * 0.5f;
+			textPos.y = cursorPos.y + (GRID_SIZE_V - textsize.y) * 0.5f;
 			ImGui::SetCursorPos(textPos);
 			if (new_time == now)
 			{
@@ -261,7 +307,7 @@ static void mainloop()
 			{
 				ImGui::Text(buffer);
 			}
-			cursorPos.x += grid_size;
+			cursorPos.x += GRID_SIZE_H;
 		}
 		ImGui::PopClipRect();
 		drawGanntView(now);
