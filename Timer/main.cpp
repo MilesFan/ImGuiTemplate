@@ -30,99 +30,146 @@ static ImVec2 canvas_p1 = {};
 //	});
 static std::vector<Task::Plan> plans = {
 	Task::Plan(
-	"Order0001",
-	//"Plan 1",
-	{
-		Task::WorkGroup(
-			"动力系统",
-			{
-				Task::WorkSubGroup(
-				"设计",
-					{
-						Task::DayWork("李", make_time(2026, 9, 11)),
-						Task::DayWork("李", make_time(2026, 9, 12)),
-						Task::DayWork("李", make_time(2026, 9, 13))
-					}
-				),
-				Task::WorkSubGroup(
-				"检查",
-					{
-						Task::DayWork("张", make_time(2026, 9, 15)),
-						Task::DayWork("张", make_time(2026, 9, 16)),
-						Task::DayWork("张", make_time(2026, 9, 17))
-					}
-				),
-			}
-		),
-		Task::WorkGroup(
-			"转向系统",
-			{
-				Task::WorkSubGroup(
-				"设计",
-					{
-						Task::DayWork("王", make_time(2026, 9, 21)),
-						Task::DayWork("王", make_time(2026, 9, 22)),
-						Task::DayWork("王", make_time(2026, 9, 23))
-					}
-				),
-				Task::WorkSubGroup(
-				"检查",
-					{
-						Task::DayWork("何", make_time(2026, 10, 8)),
-						Task::DayWork("何", make_time(2026, 10, 9)),
-						Task::DayWork("何", make_time(2026, 10, 10))
-					}
-				),
-			}
-		)
-	}),
+		"Order0001",
+		{
+			Task::WorkGroup(
+				"合同",
+				{
+					Task::WorkSubGroup(
+					"解读",
+						{
+							Task::DayWork("严", make_time(2026, 9, 2)),
+							Task::DayWork("严", make_time(2026, 9, 3)),
+							Task::DayWork("严", make_time(2026, 9, 4))
+						}
+					),
+				}
+			),
+			Task::WorkGroup(
+				"动力系统",
+				{
+					Task::WorkSubGroup(
+					"设计",
+						{
+							Task::DayWork("李", make_time(2026, 9, 11)),
+							Task::DayWork("李", make_time(2026, 9, 12)),
+							Task::DayWork("李", make_time(2026, 9, 13))
+						}
+					),
+					Task::WorkSubGroup(
+					"检查",
+						{
+							Task::DayWork("张", make_time(2026, 9, 15)),
+							Task::DayWork("张", make_time(2026, 9, 16)),
+							Task::DayWork("张", make_time(2026, 9, 17))
+						}
+					),
+				}
+			),
+			Task::WorkGroup(
+				"转向系统",
+				{
+					Task::WorkSubGroup(
+					"设计",
+						{
+							Task::DayWork("王", make_time(2026, 9, 21)),
+							Task::DayWork("王", make_time(2026, 9, 22)),
+							Task::DayWork("王", make_time(2026, 9, 23))
+						}
+					),
+					Task::WorkSubGroup(
+					"检查",
+						{
+							Task::DayWork("何", make_time(2026, 10, 8)),
+							Task::DayWork("何", make_time(2026, 10, 9)),
+							Task::DayWork("何", make_time(2026, 10, 10))
+						}
+					),
+				}
+			)
+		}
+	),
+	Task::Plan("Order0009", { }),
 	Task::Plan(
-	"Order0002",
-	//"Plan 2",
-	{
-		Task::WorkGroup(
-			"空调系统",
-			{
-				Task::WorkSubGroup(
-				"设计",
-					{
-						Task::DayWork("张", make_time(2026, 9, 26)),
-						Task::DayWork("张", make_time(2026, 9, 27)),
-						Task::DayWork("张", make_time(2026, 9, 28))
-					}
-				),
-				Task::WorkSubGroup(
-				"检查",
-					{
-						Task::DayWork("李", make_time(2026, 9, 27)),
-						Task::DayWork("李", make_time(2026, 9, 28)),
-						Task::DayWork("李", make_time(2026, 9, 29))
-					}
-				),
-			}
-		),
-		Task::WorkGroup(
-			"照明系统",
-			{
-				Task::WorkSubGroup(
-				"设计",
-					{
-						Task::DayWork("王", make_time(2026, 9, 6)),
-						Task::DayWork("王", make_time(2026, 9, 7)),
-						Task::DayWork("王", make_time(2026, 9, 8))
-					}
-				),
-				Task::WorkSubGroup(
-				"检查",
-					{
-						Task::DayWork("何", make_time(2026, 9, 9)),
-						Task::DayWork("何", make_time(2026, 9, 10)),
-						Task::DayWork("何", make_time(2026, 9, 11))
-					}
-				),
-			}
-		)
-	})
+		"Order0008",
+		{
+			Task::WorkGroup(
+				"空调系统",
+				{
+				}
+			),
+			Task::WorkGroup(
+				"照明系统",
+				{
+					Task::WorkSubGroup(
+					"设计",
+						{
+							Task::DayWork("王", make_time(2026, 9, 6)),
+							Task::DayWork("王", make_time(2026, 9, 7)),
+							Task::DayWork("王", make_time(2026, 9, 8))
+						}
+					),
+					Task::WorkSubGroup(
+					"检查",
+						{
+						}
+					),
+				}
+			),
+			Task::WorkGroup(
+				"xx系统",
+				{
+				}
+			),
+		}
+	),
+	Task::Plan(
+		"Order0002",
+		{
+			Task::WorkGroup(
+				"空调系统",
+				{
+					Task::WorkSubGroup(
+					"设计",
+						{
+							Task::DayWork("张", make_time(2026, 9, 26)),
+							Task::DayWork("张", make_time(2026, 9, 27)),
+							Task::DayWork("张", make_time(2026, 9, 28))
+						}
+					),
+					Task::WorkSubGroup(
+					"检查",
+						{
+							Task::DayWork("李", make_time(2026, 9, 27)),
+							Task::DayWork("李", make_time(2026, 9, 28)),
+							Task::DayWork("李", make_time(2026, 9, 29))
+						}
+					),
+				}
+			),
+			Task::WorkGroup(
+				"照明系统",
+				{
+					Task::WorkSubGroup(
+					"设计",
+						{
+							Task::DayWork("王", make_time(2026, 9, 6)),
+							Task::DayWork("王", make_time(2026, 9, 7)),
+							Task::DayWork("王", make_time(2026, 9, 8))
+						}
+					),
+					Task::WorkSubGroup(
+					"检查",
+						{
+							Task::DayWork("何", make_time(2026, 9, 9)),
+							Task::DayWork("何", make_time(2026, 9, 10)),
+							Task::DayWork("何", make_time(2026, 9, 11))
+						}
+					),
+				}
+			)
+		}
+	)
 };
 static void drawCanvas()
 {
@@ -256,6 +303,7 @@ static void drawGanntView(time_t basetime)
 	float canvas_width = canvas_p1.x - canvas_p0.x - GRID_SIZE_H * (PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS);
 	float half_canvas_width = ceil(canvas_width / 2 / GRID_SIZE_H - 1) * GRID_SIZE_H;
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+	auto mousePos = ImGui::GetIO().MousePos - canvas_p0;
 
 	{
 		ImGui::PushClipRect(ImVec2(canvas_p0.x, canvas_p0.y + GRID_SIZE_V), canvas_p1, false);
@@ -266,12 +314,23 @@ static void drawGanntView(time_t basetime)
 			textPos.x = canvas_p0.x  + (GRID_SIZE_H * PLAN_NAME_CELLS - textsize.x) * 0.5f;
 			textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
 			ImGui::SetCursorPos(textPos);
-			ImGui::Text(plans[i].Name.c_str());
-			size_t count = 0;
+			int count = 0;
 			for (const auto& wg : plans[i].WorkGroups) {
-				count += wg.WorkSubGroups.size();
+				if (wg.WorkSubGroups.size() == 0)
+					count++;
+				else
+					count += (int)wg.WorkSubGroups.size();
 			}
-			row += (int)count;
+			if (count == 0) count = 1;
+			if (mousePos.y > GRID_SIZE_V * (1 + row) && mousePos.y < GRID_SIZE_V * (1 + count + row))
+			{
+				ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), plans[i].Name.c_str());
+			}
+			else
+			{
+				ImGui::Text(plans[i].Name.c_str());
+			}
+			row += count;
 		}
 		ImGui::PopClipRect();
 	}
@@ -282,6 +341,11 @@ static void drawGanntView(time_t basetime)
 		int row = 0;
 		for (int i = 0; i < plans.size(); ++i)
 		{
+			if (plans[i].WorkGroups.size() == 0)
+			{
+				row++;
+				continue;
+			}
 			for (int j = 0; j < plans[i].WorkGroups.size(); ++j)
 			{
 				auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].Name.c_str());
@@ -290,8 +354,18 @@ static void drawGanntView(time_t basetime)
 				textPos.x = canvas_p0.x + GRID_SIZE_H * PLAN_NAME_CELLS + (PLAN_NAME_CELLS * GRID_SIZE_H - textsize.x) * 0.5f;
 				textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
 				ImGui::SetCursorPos(textPos);
-				ImGui::Text(plans[i].WorkGroups[j].Name.c_str());
-				row += (int)plans[i].WorkGroups[j].WorkSubGroups.size();
+				//ImGui::Text(plans[i].WorkGroups[j].Name.c_str());
+				int count = (int)plans[i].WorkGroups[j].WorkSubGroups.size();
+				if (count == 0) count = 1;
+				if (mousePos.y > GRID_SIZE_V * (1 + row) && mousePos.y < GRID_SIZE_V * (1 + count + row))
+				{
+					ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), plans[i].WorkGroups[j].Name.c_str());
+				}
+				else
+				{
+					ImGui::Text(plans[i].WorkGroups[j].Name.c_str());
+				}
+				row += count;
 			}
 		}
 		ImGui::PopClipRect();
@@ -302,8 +376,18 @@ static void drawGanntView(time_t basetime)
 		int row = 0;
 		for (int i = 0; i < plans.size(); ++i)
 		{
+			if (plans[i].WorkGroups.size() == 0)
+			{
+				row++;
+				continue;
+			}
 			for (int j = 0; j < plans[i].WorkGroups.size(); ++j)
 			{
+				if (plans[i].WorkGroups[j].WorkSubGroups.size() == 0)
+				{
+					row++;
+					continue;
+				}
 				for (int k = 0; k < plans[i].WorkGroups[j].WorkSubGroups.size(); ++k)
 				{
 					auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].WorkSubGroups[k].Name.c_str());
@@ -312,7 +396,16 @@ static void drawGanntView(time_t basetime)
 					textPos.x = canvas_p0.x + GRID_SIZE_H * (PLAN_NAME_CELLS + TASK_GROUP_CELLS) + (GRID_SIZE_H - textsize.x) * 0.5f;
 					textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
 					ImGui::SetCursorPos(textPos);
-					ImGui::Text(plans[i].WorkGroups[j].WorkSubGroups[k].Name.c_str());
+					//ImGui::Text(plans[i].WorkGroups[j].WorkSubGroups[k].Name.c_str());
+
+					if (mousePos.y > GRID_SIZE_V * (1 + row) && mousePos.y < GRID_SIZE_V * (2 + row))
+					{
+						ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), plans[i].WorkGroups[j].WorkSubGroups[k].Name.c_str());
+					}
+					else
+					{
+						ImGui::Text(plans[i].WorkGroups[j].WorkSubGroups[k].Name.c_str());
+					}
 					++row;
 				}
 			}
@@ -325,8 +418,18 @@ static void drawGanntView(time_t basetime)
 		int row = 0;
 		for (int i = 0; i < plans.size(); ++i)
 		{
+			if (plans[i].WorkGroups.size() == 0)
+			{
+				row++;
+				continue;
+			}
 			for (int j = 0; j < plans[i].WorkGroups.size(); ++j)
 			{
+				if (plans[i].WorkGroups[j].WorkSubGroups.size() == 0)
+				{
+					row++;
+					continue;
+				}
 				//for (int k = 0; k < plans[i].WorkGroups[j].DayWorks.size(); ++k)
 				//{
 				//	auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].DayWorks[k].Person.c_str());
@@ -348,6 +451,11 @@ static void drawGanntView(time_t basetime)
 
 				for (int k = 0; k < plans[i].WorkGroups[j].WorkSubGroups.size(); ++k)
 				{
+					if (plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks.size() == 0)
+					{
+						row++;
+						continue;
+					}
 					for (int l = 0; l < plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks.size(); ++l)
 					{
 						auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l].Person.c_str());

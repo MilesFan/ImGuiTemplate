@@ -69,6 +69,7 @@ namespace Task
 		Status Status = Status::NotStarted;
 		WorkGroup();
 		WorkGroup(std::string Name, std::vector<WorkSubGroup> WorkSubGroups) : Name(std::move(Name)), WorkSubGroups(std::move(WorkSubGroups)) {}
+		//int Rows();
 	};
 	class Plan {
 	public:
@@ -81,6 +82,7 @@ namespace Task
 		Status Status = Status::NotStarted;
 		Plan();
 		Plan(std::string Name, std::vector<WorkGroup> WorkGroups) : Name(std::move(Name)), WorkGroups(std::move(WorkGroups)) {}
+		//int Rows();
 	};
 }
 #endif // !PLAN_H
