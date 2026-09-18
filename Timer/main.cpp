@@ -1,6 +1,7 @@
 ﻿#define IMGUI_DEFINE_MATH_OPERATORS
 #include "main.h"
 #include "custommath.h"
+#include <algorithm>
 #include "./../ImGuiScaffoldSDL3GL/imgui/imgui_internal.h"
 //const float GRID_SIZE_H = 32;
 const float GRID_SIZE_H = 70;
@@ -366,6 +367,46 @@ static int nearestSubgroupRow(int want, int total)
 	return -1;
 }
 
+// ---- Shift 组拖拽:按住 Shift 时,同 WorkSubGroup 内与被拖 DayWork 日期连续相邻的 DayWork 一起移动 ----
+static std::vector<int> drag_group_ls = {};   // 组成员(DayWorks 索引,含被拖的那个)
+static time_t drag_group_min_date = 0;        // 组内最早日期(标注用)
+static time_t drag_group_max_date = 0;        // 组内最晚日期(标注用)
+
+static int findDayWorkIndexByDate(int i, int j, int k, time_t date)
+{
+	auto& dws = plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks;
+	for (int l = 0; l < (int)dws.size(); ++l)
+		if (dws[l].Date == date)
+			return l;
+	return -1;
+}
+
+// with_shift 为 true 时,从被拖的 DayWork 出发向日期两侧扩展连续相邻的成员
+static void buildDragGroup(bool with_shift, int i, int j, int k, int l)
+{
+	drag_group_ls.clear();
+	drag_group_ls.push_back(l);
+	auto& dws = plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks;
+	drag_group_min_date = dws[l].Date;
+	drag_group_max_date = dws[l].Date;
+	if (!with_shift)
+		return;
+	for (time_t d = dws[l].Date - 86400; ; d -= 86400)
+	{
+		int idx = findDayWorkIndexByDate(i, j, k, d);
+		if (idx < 0) break;
+		drag_group_ls.push_back(idx);
+		drag_group_min_date = d;
+	}
+	for (time_t d = dws[l].Date + 86400; ; d += 86400)
+	{
+		int idx = findDayWorkIndexByDate(i, j, k, d);
+		if (idx < 0) break;
+		drag_group_ls.push_back(idx);
+		drag_group_max_date = d;
+	}
+}
+
 static void drawGanntView(time_t basetime)
 {
 	static struct tm* tm_info;
@@ -377,7 +418,8 @@ static void drawGanntView(time_t basetime)
 	ImGuiIO& io = ImGui::GetIO();
 	auto mousePos = io.MousePos - canvas_p0;
 
-	// ---- 右键拖拽 DayWork:水平拖动改变日期,垂直拖动移动到其他任务行(WorkSubGroup) ----
+	// ---- 右键拖拽 DayWork:水平拖动改变日期,垂直拖动移动到其他任务行(WorkSubGroup);
+	//      按住 Shift 拖拽时,日期连续相邻的 DayWork 作为一组一起移动 ----
 	static bool dragging_daywork = false;   // 正在拖拽某个 DayWork
 	static int drag_i = -1, drag_j = -1, drag_k = -1, drag_l = -1; // 拖拽目标: plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l]
 	static float drag_anchor_x = 0.0f;      // 按下右键时的鼠标 X
@@ -390,24 +432,44 @@ static void drawGanntView(time_t basetime)
 	{
 		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
-			// 松开右键:提交日期与所属任务的修改
+			// 松开右键:提交整组(Shift 时为相邻日期集合,否则仅单个)的日期与所属任务修改
 			auto& srcDayWorks = plans[drag_i].WorkGroups[drag_j].WorkSubGroups[drag_k].DayWorks;
 			if (drag_offset_days != 0)
-				srcDayWorks[drag_l].Date += (time_t)drag_offset_days * 86400;
+				for (int idx : drag_group_ls)
+					srcDayWorks[idx].Date += (time_t)drag_offset_days * 86400;
 			int ti, tj, tk;
 			if (drag_preview_row >= 0 && taskRowAt(drag_preview_row, ti, tj, tk)
 				&& (ti != drag_i || tj != drag_j || tk != drag_k))
 			{
-				// 移动到目标行的 WorkSubGroup(追加到其 DayWorks 末尾)
-				Task::DayWork moved = std::move(srcDayWorks[drag_l]);
-				srcDayWorks.erase(srcDayWorks.begin() + drag_l);
-				plans[ti].WorkGroups[tj].WorkSubGroups[tk].DayWorks.push_back(std::move(moved));
+				// 整组移动到目标行的 WorkSubGroup(按日期升序追加到其 DayWorks 末尾)
+				std::vector<Task::DayWork> moved;
+				std::vector<Task::DayWork> kept;
+				moved.reserve(drag_group_ls.size());
+				kept.reserve(srcDayWorks.size());
+				for (int idx = 0; idx < (int)srcDayWorks.size(); ++idx)
+				{
+					bool is_member = false;
+					for (int m : drag_group_ls)
+						if (m == idx) { is_member = true; break; }
+					if (is_member)
+						moved.push_back(std::move(srcDayWorks[idx]));
+					else
+						kept.push_back(std::move(srcDayWorks[idx]));
+				}
+				std::sort(moved.begin(), moved.end(), [](const Task::DayWork& a, const Task::DayWork& b) { return a.Date < b.Date; });
+				srcDayWorks = std::move(kept);
+				auto& dstDayWorks = plans[ti].WorkGroups[tj].WorkSubGroups[tk].DayWorks;
+				for (auto& dw : moved)
+					dstDayWorks.push_back(std::move(dw));
 			}
 			dragging_daywork = false;
 			drag_i = drag_j = drag_k = drag_l = -1;
 			drag_offset_days = 0;
 			drag_offset_rows = 0;
 			drag_preview_row = -1;
+			drag_group_ls.clear();
+			drag_group_min_date = 0;
+			drag_group_max_date = 0;
 		}
 		else if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
 		{
@@ -415,6 +477,8 @@ static void drawGanntView(time_t basetime)
 			drag_offset_days = (int)roundf((io.MousePos.x - drag_anchor_x) / GRID_SIZE_H);
 			drag_offset_rows = (int)roundf((io.MousePos.y - drag_anchor_y) / GRID_SIZE_V);
 			drag_preview_row = nearestSubgroupRow(taskRowOf(drag_i, drag_j, drag_k) + drag_offset_rows, taskRowCount());
+			// 每帧重算组:拖拽中按住/松开 Shift 可实时增减一起移动的成员
+			buildDragGroup(io.KeyShift, drag_i, drag_j, drag_k, drag_l);
 		}
 		else
 		{
@@ -424,6 +488,9 @@ static void drawGanntView(time_t basetime)
 			drag_offset_days = 0;
 			drag_offset_rows = 0;
 			drag_preview_row = -1;
+			drag_group_ls.clear();
+			drag_group_min_date = 0;
+			drag_group_max_date = 0;
 		}
 	}
 
@@ -585,10 +652,15 @@ static void drawGanntView(time_t basetime)
 						double diff_seconds = difftime(daywork.Date, basetime);
 						int diff_days = (int)(diff_seconds / (60 * 60 * 24));
 
-						const bool is_drag_source = dragging_daywork && i == drag_i && j == drag_j && k == drag_k && l == drag_l;
-						const int drag_days = is_drag_source ? drag_offset_days : 0;
+						// 拖拽集合成员:被拖的 DayWork 本身,或 Shift 组拖拽时与它日期相邻的 DayWork
+						const bool is_drag_anchor = dragging_daywork && i == drag_i && j == drag_j && k == drag_k && l == drag_l;
+						bool in_drag_set = is_drag_anchor;
+						if (!in_drag_set && dragging_daywork && i == drag_i && j == drag_j && k == drag_k)
+							for (int m : drag_group_ls)
+								if (m == l) { in_drag_set = true; break; }
+						const int drag_days = in_drag_set ? drag_offset_days : 0;
 						// 拖拽预览绘制在目标行(吸附后的任务行),非拖拽时就是自身所在行
-						const int cell_row = (is_drag_source && drag_preview_row >= 0) ? drag_preview_row : row;
+						const int cell_row = (in_drag_set && drag_preview_row >= 0) ? drag_preview_row : row;
 
 						float cell_x = canvas_p0.x + scrolling.x + GRID_SIZE_H * (diff_days + drag_days + PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS) + half_canvas_width;
 						float cell_y = GRID_SIZE_V * 1 + GRID_SIZE_V * cell_row + canvas_p0.y + scrolling.y;
@@ -610,9 +682,10 @@ static void drawGanntView(time_t basetime)
 							drag_offset_days = 0;
 							drag_offset_rows = 0;
 							drag_preview_row = row;
+							buildDragGroup(io.KeyShift, i, j, k, l); // Shift 按住时连同相邻日期一起拖
 						}
 
-						if (is_drag_source)
+						if (in_drag_set)
 						{
 							// 原位置画虚影(记录原始行与原始日期)
 							if (drag_days != 0 || drag_offset_rows != 0)
@@ -621,30 +694,45 @@ static void drawGanntView(time_t basetime)
 								float ghost_y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + 3;
 								draw_list->AddRect(ImVec2(ghost_x, ghost_y), ImVec2(ghost_x + GRID_SIZE_H - 8, ghost_y + GRID_SIZE_V - 5), IM_COL32(255, 255, 0, 90));
 							}
-							// 目标行提示带
-							if (drag_preview_row >= 0)
-								draw_list->AddRectFilled(ImVec2(canvas_p0.x + GRID_SIZE_H * (PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS), cell_y), ImVec2(canvas_p1.x, cell_y + GRID_SIZE_V), IM_COL32(255, 255, 0, 25));
-							// 拖拽中的单元格高亮
+							// 组成员高亮(被抓住的那个边框更亮)
 							draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
-							draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0);
-							ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
-							// 垂直拖动时,在预览单元格右侧显示目标任务名
-							if (drag_offset_rows != 0)
+							draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, is_drag_anchor ? 255 : 160), 0);
+							if (is_drag_anchor)
 							{
-								int ti, tj, tk;
-								if (drag_preview_row >= 0 && taskRowAt(drag_preview_row, ti, tj, tk))
-									draw_list->AddText(ImVec2(x1 + 6, cell_y + (GRID_SIZE_V - ImGui::GetTextLineHeight()) * 0.5f), IM_COL32(255, 255, 0, 220), plans[ti].WorkGroups[tj].WorkSubGroups[tk].Name.c_str());
-							}
-							// 水平拖动时,在拖拽预览上方显示目标日期
-							if (drag_days != 0)
-							{
-								time_t new_date = daywork.Date + (time_t)drag_days * 86400;
-								struct tm* new_tm = localtime(&new_date);
-								char date_buf[32];
-								sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d", new_tm->tm_year + 1900, new_tm->tm_mon + 1, new_tm->tm_mday);
-								float text_y = y0 - 16.0f;
-								if (text_y < canvas_p0.y + GRID_SIZE_V + 2.0f) text_y = canvas_p0.y + GRID_SIZE_V + 2.0f;
-								draw_list->AddText(ImVec2(cell_x + 3, text_y), IM_COL32(255, 255, 0, 255), date_buf);
+								// 目标行提示带
+								if (drag_preview_row >= 0)
+									draw_list->AddRectFilled(ImVec2(canvas_p0.x + GRID_SIZE_H * (PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS), cell_y), ImVec2(canvas_p1.x, cell_y + GRID_SIZE_V), IM_COL32(255, 255, 0, 25));
+								ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+								// 垂直拖动时,在预览单元格右侧显示目标任务名
+								if (drag_offset_rows != 0)
+								{
+									int ti, tj, tk;
+									if (drag_preview_row >= 0 && taskRowAt(drag_preview_row, ti, tj, tk))
+										draw_list->AddText(ImVec2(x1 + 6, cell_y + (GRID_SIZE_V - ImGui::GetTextLineHeight()) * 0.5f), IM_COL32(255, 255, 0, 220), plans[ti].WorkGroups[tj].WorkSubGroups[tk].Name.c_str());
+								}
+								// 水平拖动时,在组最左预览单元格上方显示目标日期(组拖拽时为区间)
+								if (drag_days != 0)
+								{
+									char date_buf[64];
+									time_t nd0 = drag_group_min_date + (time_t)drag_days * 86400;
+									struct tm tm0 = *localtime(&nd0);
+									if (drag_group_ls.size() > 1)
+									{
+										time_t nd1 = drag_group_max_date + (time_t)drag_days * 86400;
+										struct tm tm1 = *localtime(&nd1);
+										sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d ~ %d-%02d-%02d",
+											tm0.tm_year + 1900, tm0.tm_mon + 1, tm0.tm_mday,
+											tm1.tm_year + 1900, tm1.tm_mon + 1, tm1.tm_mday);
+									}
+									else
+									{
+										sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d", tm0.tm_year + 1900, tm0.tm_mon + 1, tm0.tm_mday);
+									}
+									float label_x = canvas_p0.x + scrolling.x + GRID_SIZE_H * ((int)(difftime(drag_group_min_date, basetime) / (60 * 60 * 24)) + drag_days + PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS) + half_canvas_width + 3;
+									float text_y = y0 - 16.0f;
+									if (text_y < canvas_p0.y + GRID_SIZE_V + 2.0f) text_y = canvas_p0.y + GRID_SIZE_V + 2.0f;
+									draw_list->AddText(ImVec2(label_x, text_y), IM_COL32(255, 255, 0, 255), date_buf);
+								}
 							}
 						}
 						else
