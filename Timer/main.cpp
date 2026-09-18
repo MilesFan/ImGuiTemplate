@@ -303,7 +303,39 @@ static void drawGanntView(time_t basetime)
 	float canvas_width = canvas_p1.x - canvas_p0.x - GRID_SIZE_H * (PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS);
 	float half_canvas_width = ceil(canvas_width / 2 / GRID_SIZE_H - 1) * GRID_SIZE_H;
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
-	auto mousePos = ImGui::GetIO().MousePos - canvas_p0;
+	ImGuiIO& io = ImGui::GetIO();
+	auto mousePos = io.MousePos - canvas_p0;
+
+	// ---- 右键拖拽 DayWork:水平拖动改变日期 ----
+	static bool dragging_daywork = false;   // 正在拖拽某个 DayWork
+	static int drag_i = -1, drag_j = -1, drag_k = -1, drag_l = -1; // 拖拽目标: plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l]
+	static float drag_anchor_x = 0.0f;      // 按下右键时的鼠标 X
+	static int drag_offset_days = 0;        // 当前拖拽偏移(天)
+
+	if (dragging_daywork)
+	{
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+		{
+			// 松开右键:提交日期修改
+			if (drag_offset_days != 0)
+				plans[drag_i].WorkGroups[drag_j].WorkSubGroups[drag_k].DayWorks[drag_l].Date += (time_t)drag_offset_days * 86400;
+			dragging_daywork = false;
+			drag_i = drag_j = drag_k = drag_l = -1;
+			drag_offset_days = 0;
+		}
+		else if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+		{
+			// 按网格宽度吸附为整天偏移
+			drag_offset_days = (int)roundf((io.MousePos.x - drag_anchor_x) / GRID_SIZE_H);
+		}
+		else
+		{
+			// 鼠标状态丢失(如窗口失焦),取消拖拽
+			dragging_daywork = false;
+			drag_i = drag_j = drag_k = drag_l = -1;
+			drag_offset_days = 0;
+		}
+	}
 
 	{
 		ImGui::PushClipRect(ImVec2(canvas_p0.x, canvas_p0.y + GRID_SIZE_V), canvas_p1, false);
@@ -458,20 +490,72 @@ static void drawGanntView(time_t basetime)
 					}
 					for (int l = 0; l < plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks.size(); ++l)
 					{
-						auto textsize = ImGui::CalcTextSize(plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l].Person.c_str());
-						static double diff_seconds;
-						static int diff_days;
-						diff_seconds = difftime(plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l].Date, basetime);
-						diff_days = (int)(diff_seconds / (60 * 60 * 24));
-						textPos.x = canvas_p0.x + scrolling.x + GRID_SIZE_H * (diff_days + PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS) + (GRID_SIZE_H - textsize.x) * 0.5f + half_canvas_width;
-						textPos.y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + (GRID_SIZE_V - textsize.y) * 0.5f;
+						auto& daywork = plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l];
+						auto textsize = ImGui::CalcTextSize(daywork.Person.c_str());
+						double diff_seconds = difftime(daywork.Date, basetime);
+						int diff_days = (int)(diff_seconds / (60 * 60 * 24));
+
+						const bool is_drag_source = dragging_daywork && i == drag_i && j == drag_j && k == drag_k && l == drag_l;
+						const int drag_days = is_drag_source ? drag_offset_days : 0;
+
+						float cell_x = canvas_p0.x + scrolling.x + GRID_SIZE_H * (diff_days + drag_days + PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS) + half_canvas_width;
+						float cell_y = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y;
+						float x0 = cell_x + 3;
+						float y0 = cell_y + 3;
+						float x1 = cell_x + GRID_SIZE_H - 5;
+						float y1 = cell_y + GRID_SIZE_V - 5;
+
+						// 命中测试:鼠标(绝对坐标)是否位于该 DayWork 单元格内
+						const bool cell_hovered = io.MousePos.x >= cell_x && io.MousePos.x < cell_x + GRID_SIZE_H
+							&& io.MousePos.y >= cell_y && io.MousePos.y < cell_y + GRID_SIZE_V;
+						// 右键按下:开始拖拽该 DayWork
+						if (!dragging_daywork && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+						{
+							dragging_daywork = true;
+							drag_i = i; drag_j = j; drag_k = k; drag_l = l;
+							drag_anchor_x = io.MousePos.x;
+							drag_offset_days = 0;
+						}
+
+						if (is_drag_source)
+						{
+							// 原位置画虚影
+							if (drag_days != 0)
+							{
+								float ghost_x = cell_x - drag_days * GRID_SIZE_H + 3;
+								draw_list->AddRect(ImVec2(ghost_x, y0), ImVec2(ghost_x + GRID_SIZE_H - 8, y1), IM_COL32(255, 255, 0, 90));
+							}
+							// 拖拽中的单元格高亮
+							draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
+							draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 255), 0);
+							ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+							// 在拖拽预览上方显示目标日期
+							if (drag_days != 0)
+							{
+								time_t new_date = daywork.Date + (time_t)drag_days * 86400;
+								struct tm* new_tm = localtime(&new_date);
+								char date_buf[32];
+								sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d", new_tm->tm_year + 1900, new_tm->tm_mon + 1, new_tm->tm_mday);
+								float text_y = y0 - 16.0f;
+								if (text_y < canvas_p0.y + GRID_SIZE_V + 2.0f) text_y = canvas_p0.y + GRID_SIZE_V + 2.0f;
+								draw_list->AddText(ImVec2(cell_x + 3, text_y), IM_COL32(255, 255, 0, 255), date_buf);
+							}
+						}
+						else
+						{
+							draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 100, 100, 255), 0);
+							// 悬停提示可拖拽
+							if (cell_hovered && !dragging_daywork)
+							{
+								draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(230, 230, 230, 220), 0);
+								ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+							}
+						}
+
+						textPos.x = cell_x + (GRID_SIZE_H - textsize.x) * 0.5f;
+						textPos.y = cell_y + (GRID_SIZE_V - textsize.y) * 0.5f;
 						ImGui::SetCursorPos(textPos);
-						int x0 = canvas_p0.x + scrolling.x + GRID_SIZE_H * (diff_days + PLAN_NAME_CELLS + TASK_GROUP_CELLS + TASK_SUBGROUP_CELLS) + half_canvas_width + 3;
-						int y0 = GRID_SIZE_V * 1 + GRID_SIZE_V * row + canvas_p0.y + scrolling.y + 3;
-						int x1 = x0 + GRID_SIZE_H - 5;
-						int y1 = y0 + GRID_SIZE_V - 5;
-						draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 100, 100, 255), 0);
-						ImGui::Text(plans[i].WorkGroups[j].WorkSubGroups[k].DayWorks[l].Person.c_str());
+						ImGui::Text(daywork.Person.c_str());
 					}
 					++row;
 				}
