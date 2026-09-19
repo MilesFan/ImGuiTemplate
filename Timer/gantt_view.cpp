@@ -100,19 +100,30 @@ void GanttView::DrawCanvas()
 	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
 	const bool is_active = ImGui::IsItemActive();
 
-	// 记录右键按下时是否已有选择:决定松开时弹菜单还是本次点击已用于取消选择
+	// 记录右键按下时是否已有选择:决定松开时弹菜单还是本次点击已取消选择
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 		RightPressHadSelection = HasSelection;
 
-	// 中键拖拽:平移(按网格吸附,顶部不超过第一行)
+	// 垂直滚动范围:内容(表头 + 全部行)不高于画布时不可滚动
+	const float content_h = GridV * ((int)Rows.size() + 1);
+	const float min_scroll_y = fminf(0.0f, canvas_sz.y - content_h);
+
+	// 鼠标滚轮:垂直滚动(一次三行)
+	if (ImGui::IsItemHovered() && !LeftDraging)
+		ScrollingReal.y += io.MouseWheel * GridV * 3.0f;
+
+	// 中键拖拽:平移
 	if (is_active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle, -1.0f))
 	{
 		ScrollingReal.x += io.MouseDelta.x;
 		ScrollingReal.y += io.MouseDelta.y;
-		if (ScrollingReal.y > 0) ScrollingReal.y = 0;
-		Scrolling.x = roundf(ScrollingReal.x / GridH) * GridH;
-		Scrolling.y = roundf(ScrollingReal.y / GridV) * GridV;
 	}
+	// 垂直钳制(顶部不超过第一行,底部不超过最后一行)后按网格吸附
+	if (ScrollingReal.y > 0.0f) ScrollingReal.y = 0.0f;
+	if (ScrollingReal.y < min_scroll_y) ScrollingReal.y = min_scroll_y;
+	Scrolling.x = roundf(ScrollingReal.x / GridH) * GridH;
+	Scrolling.y = roundf(ScrollingReal.y / GridV) * GridV;
+	if (Scrolling.y < min_scroll_y) Scrolling.y = ceilf(min_scroll_y / GridV) * GridV;
 
 	// 右键点击(无拖拽位移)且此前无选择时弹上下文菜单;有选择时本次点击用于取消选择
 	ImVec2 drag_delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
@@ -157,6 +168,7 @@ void GanttView::DrawCanvas()
 
 void GanttView::DrawDateHeader(time_t basetime)
 {
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	ImGui::PushClipRect(ImVec2(CanvasP0.x + GridH * LabelCells(), CanvasP0.y), CanvasP1, false);
 
 	float fration = fmodf(Scrolling.x, GridH);
@@ -175,12 +187,9 @@ void GanttView::DrawDateHeader(time_t basetime)
 		auto textsize = ImGui::CalcTextSize(buffer);
 		ImVec2 textPos;
 		textPos.x = CanvasP0.x + fration + GridH * (i + LabelCells()) + (GridH - textsize.x) * 0.5f;
-		textPos.y = CanvasCursorPos.y + (GridV - textsize.y) * 0.5f;
-		ImGui::SetCursorPos(textPos);
-		if (cell_time == basetime)
-			ImGui::TextColored(ImVec4(1, 0, 0, 1), buffer);
-		else
-			ImGui::Text(buffer);
+		textPos.y = CanvasP0.y + (GridV - textsize.y) * 0.5f;
+		// 屏幕坐标直接绘制(与网格线同坐标系,不污染窗口布局)
+		draw_list->AddText(textPos, cell_time == basetime ? IM_COL32(255, 0, 0, 255) : IM_COL32(255, 255, 255, 255), buffer);
 	}
 	ImGui::PopClipRect();
 }
@@ -188,14 +197,16 @@ void GanttView::DrawDateHeader(time_t basetime)
 // ==================== 标签列 ====================
 
 // 悬停行判定(绝对 Y 坐标,含画布原点与垂直平移)
-static bool rowHovered(const ImVec2& mouse, const ImVec2& canvas_p0, float grid_v, int row, int count)
+static bool rowHovered(const ImVec2& mouse, const ImVec2& canvas_p0, float grid_v, float scrolling_y, int row, int count)
 {
-	return mouse.y > canvas_p0.y + grid_v * (1 + row) && mouse.y < canvas_p0.y + grid_v * (1 + count + row);
+	float top = canvas_p0.y + grid_v * (1 + row) + scrolling_y;
+	return mouse.y > top && mouse.y < top + grid_v * count;
 }
 
 void GanttView::DrawPlanColumn()
 {
 	ImGuiIO& io = ImGui::GetIO();
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	ImGui::PushClipRect(ImVec2(CanvasP0.x, CanvasP0.y + GridV), CanvasP1, false);
 	// 沿行模型聚合每个 Plan 的连续行跨度
 	int row = 0;
@@ -210,12 +221,11 @@ void GanttView::DrawPlanColumn()
 		auto textsize = ImGui::CalcTextSize(Plans[plan].Name.c_str());
 		ImVec2 textPos;
 		textPos.x = CanvasP0.x + (GridH * PlanNameCells - textsize.x) * 0.5f;
-		textPos.y = GridV * 1 + GridV * row + CanvasP0.y + Scrolling.y + (GridV - textsize.y) * 0.5f;
-		ImGui::SetCursorPos(textPos);
-		if (rowHovered(io.MousePos, CanvasP0, GridV, row, count))
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), Plans[plan].Name.c_str());
-		else
-			ImGui::Text(Plans[plan].Name.c_str());
+		textPos.y = CanvasP0.y + GridV * (1 + row) + Scrolling.y + (GridV - textsize.y) * 0.5f;
+		// 屏幕坐标直接绘制(与格子同坐标系,不污染窗口布局)
+		draw_list->AddText(textPos,
+			rowHovered(io.MousePos, CanvasP0, GridV, Scrolling.y, row, count) ? IM_COL32(255, 255, 0, 255) : IM_COL32(255, 255, 255, 255),
+			Plans[plan].Name.c_str());
 		row = span_end;
 	}
 	ImGui::PopClipRect();
@@ -224,6 +234,7 @@ void GanttView::DrawPlanColumn()
 void GanttView::DrawGroupColumn()
 {
 	ImGuiIO& io = ImGui::GetIO();
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	ImGui::PushClipRect(ImVec2(CanvasP0.x + GridH * PlanNameCells, CanvasP0.y + GridV), CanvasP1, false);
 	// 沿行模型聚合每个 WorkGroup 的连续行跨度
 	int row = 0;
@@ -245,12 +256,10 @@ void GanttView::DrawGroupColumn()
 		auto textsize = ImGui::CalcTextSize(Plans[plan].WorkGroups[group].Name.c_str());
 		ImVec2 textPos;
 		textPos.x = CanvasP0.x + GridH * PlanNameCells + (TaskGroupCells * GridH - textsize.x) * 0.5f;
-		textPos.y = GridV * 1 + GridV * row + CanvasP0.y + Scrolling.y + (GridV - textsize.y) * 0.5f;
-		ImGui::SetCursorPos(textPos);
-		if (rowHovered(io.MousePos, CanvasP0, GridV, row, count))
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), Plans[plan].WorkGroups[group].Name.c_str());
-		else
-			ImGui::Text(Plans[plan].WorkGroups[group].Name.c_str());
+		textPos.y = CanvasP0.y + GridV * (1 + row) + Scrolling.y + (GridV - textsize.y) * 0.5f;
+		draw_list->AddText(textPos,
+			rowHovered(io.MousePos, CanvasP0, GridV, Scrolling.y, row, count) ? IM_COL32(255, 255, 0, 255) : IM_COL32(255, 255, 255, 255),
+			Plans[plan].WorkGroups[group].Name.c_str());
 		row = span_end;
 	}
 	ImGui::PopClipRect();
@@ -259,6 +268,7 @@ void GanttView::DrawGroupColumn()
 void GanttView::DrawSubGroupColumn()
 {
 	ImGuiIO& io = ImGui::GetIO();
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	ImGui::PushClipRect(ImVec2(CanvasP0.x + GridH * (PlanNameCells + TaskGroupCells), CanvasP0.y + GridV), CanvasP1, false);
 	for (int row = 0; row < (int)Rows.size(); ++row)
 	{
@@ -269,12 +279,10 @@ void GanttView::DrawSubGroupColumn()
 		auto textsize = ImGui::CalcTextSize(subgroup.Name.c_str());
 		ImVec2 textPos;
 		textPos.x = CanvasP0.x + GridH * (PlanNameCells + TaskGroupCells) + (GridH - textsize.x) * 0.5f;
-		textPos.y = GridV * 1 + GridV * row + CanvasP0.y + Scrolling.y + (GridV - textsize.y) * 0.5f;
-		ImGui::SetCursorPos(textPos);
-		if (rowHovered(io.MousePos, CanvasP0, GridV, row, 1))
-			ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), subgroup.Name.c_str());
-		else
-			ImGui::Text(subgroup.Name.c_str());
+		textPos.y = CanvasP0.y + GridV * (1 + row) + Scrolling.y + (GridV - textsize.y) * 0.5f;
+		draw_list->AddText(textPos,
+			rowHovered(io.MousePos, CanvasP0, GridV, Scrolling.y, row, 1) ? IM_COL32(255, 255, 0, 255) : IM_COL32(255, 255, 255, 255),
+			subgroup.Name.c_str());
 	}
 	ImGui::PopClipRect();
 }
@@ -421,8 +429,8 @@ void GanttView::DrawDayWorks(time_t basetime)
 			ImVec2 textPos;
 			textPos.x = cell_x + (GridH - textsize.x) * 0.5f;
 			textPos.y = cell_y + (GridV - textsize.y) * 0.5f;
-			ImGui::SetCursorPos(textPos);
-			ImGui::Text(daywork.Person.c_str());
+			// 屏幕坐标直接绘制(与格子同坐标系,不污染窗口布局)
+			draw_list->AddText(textPos, IM_COL32(255, 255, 255, 255), daywork.Person.c_str());
 		}
 	}
 	ImGui::PopClipRect();
