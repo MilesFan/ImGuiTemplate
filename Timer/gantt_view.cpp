@@ -96,7 +96,7 @@ void GanttView::DrawCanvas()
 	draw_list->AddRectFilled(CanvasP0, CanvasP1, IM_COL32(50, 50, 50, 255));
 	draw_list->AddRect(CanvasP0, CanvasP1, IM_COL32(255, 255, 255, 255));
 
-	// 交互捕获:中键拖拽平移,左键选择任务,右键拖拽移动选中任务/单击取消选择
+	// 交互捕获:左键选择/拖动任务,右键单击取消选择,中键拖拽平移
 	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
 	const bool is_active = ImGui::IsItemActive();
 
@@ -288,6 +288,7 @@ void GanttView::DrawDayWorks(time_t basetime)
 	float canvas_width = CanvasP1.x - CanvasP0.x - GridH * LabelCells();
 	float half_canvas_width = ceil(canvas_width / 2 / GridH - 1) * GridH;
 
+	const bool move_mode = LeftDraging && DragFromSelected;
 	const int sel_source_row = HasSelection ? RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx) : -1;
 	time_t sel_min_date = 0, sel_max_date = 0;
 	if (HasSelection)
@@ -308,11 +309,15 @@ void GanttView::DrawDayWorks(time_t basetime)
 			double diff_seconds = difftime(daywork.Date, basetime);
 			int diff_days = (int)(diff_seconds / (60 * 60 * 24));
 
-			// 移动预览:选中集合整体偏移(水平整天,垂直吸附到目标任务行)
+			// 选中集合成员;移动模式下整体偏移(水平整天,垂直吸附到目标任务行)
 			const bool selected = InSelection(r.Plan, r.Group, r.SubGroup, l);
-			const bool is_move_anchor = Moving && selected && l == MoveAnchorWorkIdx;
-			const int move_days = (selected && Moving) ? MoveOffsetDays : 0;
-			const int cell_row = (selected && Moving && MovePreviewRow >= 0) ? MovePreviewRow : row;
+			// 区间选择模式:按下行内被实时高亮的成员
+			const bool pending_pick = LeftDraging && !DragFromSelected
+				&& r.Plan == DragPlanIdx && r.Group == DragGroupIdx && r.SubGroup == DragSubGroupIdx
+				&& std::find(PendingWorks.begin(), PendingWorks.end(), l) != PendingWorks.end();
+			const bool is_drag_anchor = (move_mode ? selected : pending_pick) && l == DragWorkIdx;
+			const int move_days = (selected && move_mode) ? DragOffsetDays : 0;
+			const int cell_row = (selected && move_mode && DragPreviewRow >= 0) ? DragPreviewRow : row;
 
 			float cell_x = CanvasP0.x + Scrolling.x + GridH * (diff_days + move_days + LabelCells()) + half_canvas_width;
 			float cell_y = GridV * 1 + GridV * cell_row + CanvasP0.y + Scrolling.y;
@@ -324,53 +329,44 @@ void GanttView::DrawDayWorks(time_t basetime)
 			// 命中测试:鼠标(绝对坐标)是否位于该 DayWork 单元格内
 			const bool cell_hovered = io.MousePos.x >= cell_x && io.MousePos.x < cell_x + GridH
 				&& io.MousePos.y >= cell_y && io.MousePos.y < cell_y + GridV;
-			// 左键按下命中任务:单击选择单个;此前无选择时还可横向拖动扩展为多选
-			if (!Moving && !RangeSelecting && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			// 左键按下命中任务:按在已选任务上为"移动"拖动,按在未选任务上为"横向区间选择"拖动
+			if (!LeftDraging && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
-				bool was_empty = !HasSelection;
-				SelectSingle(r.Plan, r.Group, r.SubGroup, l);
-				if (was_empty)
-				{
-					RangeSelecting = true;
-					RangeAnchorDate = daywork.Date;
-					RangeAnchorX = io.MousePos.x;
-				}
+				LeftDraging = true;
+				DragFromSelected = selected;
+				DragPlanIdx = r.Plan; DragGroupIdx = r.Group; DragSubGroupIdx = r.SubGroup; DragWorkIdx = l;
+				DragAnchorX = io.MousePos.x;
+				DragAnchorY = io.MousePos.y;
+				DragAnchorDate = daywork.Date;
+				DragOffsetDays = 0;
+				DragOffsetRows = 0;
+				DragPreviewRow = DragFromSelected ? row : -1;
+				PendingWorks.assign(1, l);
 				left_press_hit_task = true;
 			}
-			// 右键按下命中已选任务:开始拖动,移动整个选择集合
-			if (!Moving && !RangeSelecting && cell_hovered && selected && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-			{
-				Moving = true;
-				MoveAnchorWorkIdx = l;
-				MoveAnchorX = io.MousePos.x;
-				MoveAnchorY = io.MousePos.y;
-				MoveOffsetDays = 0;
-				MoveOffsetRows = 0;
-				MovePreviewRow = row;
-			}
 
-			if (selected)
+			if (move_mode && selected)
 			{
 				// 原位置画虚影(记录原始行与原始日期)
-				if (Moving && (move_days != 0 || MoveOffsetRows != 0))
+				if (move_days != 0 || DragOffsetRows != 0)
 				{
 					float ghost_x = cell_x - move_days * GridH + 3;
 					float ghost_y = GridV * 1 + GridV * row + CanvasP0.y + Scrolling.y + 3;
 					draw_list->AddRect(ImVec2(ghost_x, ghost_y), ImVec2(ghost_x + GridH - 8, ghost_y + GridV - 5), IM_COL32(255, 255, 0, 90));
 				}
-				// 选中成员高亮(被抓住的那个边框更亮)
+				// 移动成员高亮(被抓住的那个边框更亮)
 				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
-				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, is_move_anchor ? 255 : 160), 0);
-				if (is_move_anchor)
+				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, is_drag_anchor ? 255 : 160), 0);
+				if (is_drag_anchor)
 				{
 					// 目标行提示带
-					if (MovePreviewRow >= 0)
+					if (DragPreviewRow >= 0 && DragPreviewRow != sel_source_row)
 						draw_list->AddRectFilled(ImVec2(CanvasP0.x + GridH * LabelCells(), cell_y), ImVec2(CanvasP1.x, cell_y + GridV), IM_COL32(255, 255, 0, 25));
 					ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
 					// 垂直拖动时,在预览单元格右侧显示目标任务名
-					if (MovePreviewRow >= 0 && MovePreviewRow != sel_source_row)
+					if (DragPreviewRow >= 0 && DragPreviewRow != sel_source_row)
 					{
-						const RowRef& target = Rows[MovePreviewRow];
+						const RowRef& target = Rows[DragPreviewRow];
 						draw_list->AddText(ImVec2(x1 + 6, cell_y + (GridV - ImGui::GetTextLineHeight()) * 0.5f), IM_COL32(255, 255, 0, 220),
 							Plans[target.Plan].WorkGroups[target.Group].WorkSubGroups[target.SubGroup].Name.c_str());
 					}
@@ -399,11 +395,23 @@ void GanttView::DrawDayWorks(time_t basetime)
 					}
 				}
 			}
+			else if (selected)
+			{
+				// 已选中:琥珀底 + 黄框
+				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
+				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 160), 0);
+			}
+			else if (pending_pick)
+			{
+				// 区间拖选中:实时高亮(按下的锚点边框更亮)
+				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
+				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, l == DragWorkIdx ? 255 : 160), 0);
+			}
 			else
 			{
 				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 100, 100, 255), 0);
 				// 悬停提示可点击选择
-				if (cell_hovered && !Moving && !RangeSelecting)
+				if (cell_hovered && !LeftDraging)
 				{
 					draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(230, 230, 230, 220), 0);
 					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -419,76 +427,80 @@ void GanttView::DrawDayWorks(time_t basetime)
 	}
 	ImGui::PopClipRect();
 
-	// 画布内按下但未命中任何任务:左键/右键均视为点击空白,取消选择
+	// 画布内左键按下但未命中任何任务:点击空白,取消选择
 	const bool mouse_in_canvas = io.MousePos.x >= CanvasP0.x && io.MousePos.x < CanvasP1.x
 		&& io.MousePos.y >= CanvasP0.y && io.MousePos.y < CanvasP1.y;
-	if (mouse_in_canvas && !left_press_hit_task && !RangeSelecting && !Moving)
-	{
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-			ClearSelection();
-	}
+	if (mouse_in_canvas && !left_press_hit_task && !LeftDraging && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		ClearSelection();
+	// 右键单击(画布内任意位置):取消选择
+	if (mouse_in_canvas && !LeftDraging && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && HasSelection)
+		ClearSelection();
 }
 
-// ==================== 选择与拖动移动 ====================
+// ==================== 选择与拖动 ====================
 
-// 每帧驱动左键拖选与右键拖动两个状态机
+// 每帧驱动左键拖动状态机
 void GanttView::UpdateInteraction()
 {
-	if (RangeSelecting)
-		UpdateRangeSelect();
-	if (Moving)
-		UpdateMove();
+	if (LeftDraging)
+		UpdateLeftDrag();
 }
 
-// 左键拖动中:以锚点日期与当前鼠标水平偏移确定同行日期区间,实时重算选择集合
-void GanttView::UpdateRangeSelect()
+// 左键在任务上按住期间:
+// 按在已选任务上 = 移动拖动(实时偏移 + 目标行吸附预览);
+// 按在未选任务上 = 横向区间选择(实时高亮锚点日期 ± 水平偏移覆盖的任务);
+// 释放时提交:移动生效 / 高亮集合成为选择;原地释放则选中按下的单个任务
+void GanttView::UpdateLeftDrag()
 {
 	ImGuiIO& io = ImGui::GetIO();
 	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 	{
-		RangeSelecting = false;   // 鼠标状态丢失(如窗口失焦),结束拖选
+		LeftDraging = false;   // 鼠标状态丢失(如窗口失焦),放弃本次拖动
 		return;
 	}
-	int offset_days = (int)roundf((io.MousePos.x - RangeAnchorX) / GridH);
-	SelectDateRange(RangeAnchorDate, RangeAnchorDate + (time_t)offset_days * 86400);
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-		RangeSelecting = false;
+	if (DragFromSelected)
+	{
+		// 移动模式:按网格大小吸附为整天/整行偏移,行号吸附到最近的有效任务行
+		DragOffsetDays = (int)roundf((io.MousePos.x - DragAnchorX) / GridH);
+		DragOffsetRows = (int)roundf((io.MousePos.y - DragAnchorY) / GridV);
+		DragPreviewRow = NearestSubgroupRow(RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx) + DragOffsetRows);
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+		{
+			int source_row = RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx);
+			if (DragOffsetDays == 0 && DragPreviewRow == source_row)
+				SelectSingle(DragPlanIdx, DragGroupIdx, DragSubGroupIdx, DragWorkIdx);   // 原地释放 = 单选该任务
+			else
+				CommitMove();
+			LeftDraging = false;
+		}
+	}
+	else
+	{
+		// 区间模式:实时重算高亮集合(锚点必在区间端点上,集合非空)
+		int offset_days = (int)roundf((io.MousePos.x - DragAnchorX) / GridH);
+		BuildPendingRange(DragAnchorDate, DragAnchorDate + (time_t)offset_days * 86400);
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+		{
+			// 释放:高亮集合成为选择
+			HasSelection = true;
+			SelPlanIdx = DragPlanIdx;
+			SelGroupIdx = DragGroupIdx;
+			SelSubGroupIdx = DragSubGroupIdx;
+			SelWorks = PendingWorks;
+			LeftDraging = false;
+		}
+	}
 }
 
-// 右键拖动中:按网格大小吸附为整天/整行偏移,行号吸附到最近的有效任务行;
-// 松开右键:有位移则提交移动,原地松手则视为右键单击取消选择
-void GanttView::UpdateMove()
-{
-	ImGuiIO& io = ImGui::GetIO();
-	if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && !ImGui::IsMouseReleased(ImGuiMouseButton_Right))
-	{
-		Moving = false;   // 鼠标状态丢失(如窗口失焦),放弃本次拖动(保留选择)
-		return;
-	}
-	// 按网格大小吸附为整天/整行偏移,行号吸附到最近的有效任务行
-	MoveOffsetDays = (int)roundf((io.MousePos.x - MoveAnchorX) / GridH);
-	MoveOffsetRows = (int)roundf((io.MousePos.y - MoveAnchorY) / GridV);
-	MovePreviewRow = NearestSubgroupRow(RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx) + MoveOffsetRows);
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Right))
-	{
-		int source_row = RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx);
-		if (MoveOffsetDays == 0 && MovePreviewRow == source_row)
-			ClearSelection();
-		else
-			CommitMove();
-		Moving = false;
-	}
-}
-
-// 提交:选中集合整体改日期;若目标行不同则整组移动到目标行的 WorkSubGroup(按日期升序追加),
+// 提交移动:选中集合整体改日期;若目标行不同则整组移动到目标行的 WorkSubGroup(按日期升序追加),
 // 选择跟随到新位置
 void GanttView::CommitMove()
 {
 	auto& srcDayWorks = Plans[SelPlanIdx].WorkGroups[SelGroupIdx].WorkSubGroups[SelSubGroupIdx].DayWorks;
-	if (MoveOffsetDays != 0)
+	if (DragOffsetDays != 0)
 		for (int idx : SelWorks)
-			srcDayWorks[idx].Date += (time_t)MoveOffsetDays * 86400;
-	RowRef target = (MovePreviewRow >= 0 && MovePreviewRow < (int)Rows.size()) ? Rows[MovePreviewRow] : RowRef();
+			srcDayWorks[idx].Date += (time_t)DragOffsetDays * 86400;
+	RowRef target = (DragPreviewRow >= 0 && DragPreviewRow < (int)Rows.size()) ? Rows[DragPreviewRow] : RowRef();
 	if (target.SubGroup < 0 || (target.Plan == SelPlanIdx && target.Group == SelGroupIdx && target.SubGroup == SelSubGroupIdx))
 		return;   // 同行:仅日期生效,选择索引不变
 	// 整组移动到目标行的 WorkSubGroup
@@ -526,9 +538,6 @@ void GanttView::ClearSelection()
 	HasSelection = false;
 	SelPlanIdx = SelGroupIdx = SelSubGroupIdx = -1;
 	SelWorks.clear();
-	RangeSelecting = false;
-	RangeAnchorDate = 0;
-	RangeAnchorX = 0.0f;
 }
 
 void GanttView::SelectSingle(int plan, int group, int subgroup, int work)
@@ -540,8 +549,8 @@ void GanttView::SelectSingle(int plan, int group, int subgroup, int work)
 	SelWorks.assign(1, work);
 }
 
-// 选择当前行内日期落在 [d0,d1] 的所有任务(区间端点由锚点日期与拖动偏移得出,必含锚点)
-void GanttView::SelectDateRange(time_t d0, time_t d1)
+// 重算区间高亮:按下行内日期落在 [d0,d1] 的所有任务(区间端点由锚点日期与拖动偏移得出,必含锚点)
+void GanttView::BuildPendingRange(time_t d0, time_t d1)
 {
 	if (d0 > d1)
 	{
@@ -549,13 +558,11 @@ void GanttView::SelectDateRange(time_t d0, time_t d1)
 		d0 = d1;
 		d1 = t;
 	}
-	auto& dayworks = Plans[SelPlanIdx].WorkGroups[SelGroupIdx].WorkSubGroups[SelSubGroupIdx].DayWorks;
-	SelWorks.clear();
+	auto& dayworks = Plans[DragPlanIdx].WorkGroups[DragGroupIdx].WorkSubGroups[DragSubGroupIdx].DayWorks;
+	PendingWorks.clear();
 	for (int l = 0; l < (int)dayworks.size(); ++l)
 		if (dayworks[l].Date >= d0 && dayworks[l].Date <= d1)
-			SelWorks.push_back(l);
-	if (!SelWorks.empty())
-		HasSelection = true;
+			PendingWorks.push_back(l);
 }
 
 bool GanttView::InSelection(int plan, int group, int subgroup, int work) const

@@ -4,10 +4,10 @@
 #include "../ImGuiScaffoldSDL3GL/imgui/imgui.h"
 #include "../Model/plan.h"
 
-// 甘特图视图:封装布局、视图状态、选择/移动状态与全部绘制逻辑
+// 甘特图视图:封装布局、视图状态、选择/拖动状态与全部绘制逻辑
 // 数据通过构造注入(Plans 引用),视图不拥有数据
-// 交互模型:左键单击选择单个任务;无选择时左键横向拖动选择同行多个任务;
-// 在选中任务上右键拖动,水平改变日期/垂直改变任务行;空白处左键或任意右键单击取消选择
+// 交互模型:左键在任务上按下并释放选中单个;按住未选任务横向拖动实时高亮区间,释放后选中;
+// 按住已选任务左键拖动改变水平/垂直位置;空白处左键或任意右键单击取消选择;中键拖动平移
 class GanttView
 {
 public:
@@ -44,19 +44,18 @@ private:
 	int SelPlanIdx = -1, SelGroupIdx = -1, SelSubGroupIdx = -1; // 选择集合所在位置: Plans[i].WorkGroups[j].WorkSubGroups[k]
 	std::vector<int> SelWorks;   // 选中的 DayWorks 索引
 
-	// ---- 左键横向拖选 ----
-	bool RangeSelecting = false; // 正在左键横向拖动扩展选择
-	time_t RangeAnchorDate = 0;  // 锚点(按下时起始任务)的日期
-	float RangeAnchorX = 0.0f;   // 按下左键时的鼠标 X
+	// ---- 左键按住拖动(按在已选任务上=移动,按在未选任务上=横向区间选择) ----
+	bool LeftDraging = false;    // 左键在任务上按下未释放
+	bool DragFromSelected = false;      // 按下时任务是否已选中(决定拖动语义)
+	int DragPlanIdx = -1, DragGroupIdx = -1, DragSubGroupIdx = -1, DragWorkIdx = -1; // 按下的任务
+	float DragAnchorX = 0.0f;    // 按下左键时的鼠标 X
+	float DragAnchorY = 0.0f;    // 按下左键时的鼠标 Y
+	time_t DragAnchorDate = 0;   // 按下任务的日期(区间选择锚点)
+	int DragOffsetDays = 0;      // 移动模式:当前水平偏移(天)
+	int DragOffsetRows = 0;      // 移动模式:当前垂直偏移(行)
+	int DragPreviewRow = -1;     // 移动模式:吸附后的预览行(松手后落入的任务行)
+	std::vector<int> PendingWorks;       // 区间模式:实时高亮的 DayWorks 索引
 
-	// ---- 右键拖动(移动选中集合) ----
-	bool Moving = false;         // 正在右键拖动选中集合
-	int MoveAnchorWorkIdx = -1;  // 被抓住的 DayWork 索引(提示标注的锚点)
-	float MoveAnchorX = 0.0f;    // 按下右键时的鼠标 X
-	float MoveAnchorY = 0.0f;    // 按下右键时的鼠标 Y
-	int MoveOffsetDays = 0;      // 当前拖动的水平偏移(天)
-	int MoveOffsetRows = 0;      // 当前拖动的垂直偏移(行)
-	int MovePreviewRow = -1;     // 吸附后的预览行(松手后落入的任务行)
 	bool RightPressHadSelection = false; // 右键按下时是否已有选择(决定松开时弹菜单还是本次点击已取消选择)
 
 	// ---- 渲染 ----
@@ -65,21 +64,20 @@ private:
 	void DrawPlanColumn();                 // 计划名列(跨行标签)
 	void DrawGroupColumn();                // 任务组列(跨行标签)
 	void DrawSubGroupColumn();             // 子任务列(单行标签)
-	void DrawDayWorks(time_t basetime);    // DayWork 单元格、选择高亮、点击/拖动启动与移动预览
+	void DrawDayWorks(time_t basetime);    // DayWork 单元格、选择/区间高亮、按下启动与移动预览
 
 	// ---- 行模型 ----
 	void RebuildRows();                    // 每帧重建扁平行表
 	int RowOf(int plan, int group, int subgroup) const;
 	int NearestSubgroupRow(int want) const;// 就近吸附到实际 WorkSubGroup 行(跳过占位行)
 
-	// ---- 选择与移动 ----
-	void UpdateInteraction();              // 状态机:拖选扩展/拖动移动/提交/取消
-	void UpdateRangeSelect();              // 左键拖动中:按锚点与当前鼠标扩展同行日期区间选择
-	void UpdateMove();                     // 右键拖动中:更新偏移;松手提交移动,原地松手则取消选择
+	// ---- 选择与拖动 ----
+	void UpdateInteraction();              // 状态机入口
+	void UpdateLeftDrag();                 // 按住左键期间:移动偏移或区间高亮;释放时提交(原地释放=单选)
 	void CommitMove();                     // 提交选中集合的日期与所属任务修改,选择跟随到新位置
-	void ClearSelection();                 // 清空选择(连同拖选状态)
+	void ClearSelection();                 // 清空选择
 	void SelectSingle(int plan, int group, int subgroup, int work);
-	void SelectDateRange(time_t d0, time_t d1); // 选择当前行内日期落在 [d0,d1] 的所有任务
+	void BuildPendingRange(time_t d0, time_t d1); // 重算区间高亮:按下行内日期落在 [d0,d1] 的所有任务
 	bool InSelection(int plan, int group, int subgroup, int work) const;
 	void SelectionDateRange(time_t& mn, time_t& mx) const; // 选中集合的最早/最晚日期
 
