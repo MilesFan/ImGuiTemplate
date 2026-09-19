@@ -1,7 +1,7 @@
 #ifndef GANNTVIEW_H
 #define GANNTVIEW_H
 #include <time.h>
-time_t make_time(int year, int month, int day,
+inline time_t make_time(int year, int month, int day,
 	int hour = 0, int min = 0, int sec = 0) {
 	tm t{};
 	t.tm_year = year - 1900;   // 年要从 1900 算起

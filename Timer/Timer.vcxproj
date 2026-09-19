@@ -148,8 +148,9 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="custommath.cpp" />
+    <ClCompile Include="gantt_view.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="sample_data.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ImGuiScaffoldSDL3GL\ImGuiScaffoldSDL3GL.vcxproj">
@@ -160,8 +161,9 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="custommath.h" />
+    <ClInclude Include="gantt_view.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="sample_data.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

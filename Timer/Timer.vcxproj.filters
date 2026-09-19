@@ -14,7 +14,10 @@
     <ClCompile Include="main.cpp">
       <Filter>source</Filter>
     </ClCompile>
-    <ClCompile Include="custommath.cpp">
+    <ClCompile Include="gantt_view.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="sample_data.cpp">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>
@@ -22,7 +25,10 @@
     <ClInclude Include="main.h">
       <Filter>header</Filter>
     </ClInclude>
-    <ClInclude Include="custommath.h">
+    <ClInclude Include="gantt_view.h">
+      <Filter>header</Filter>
+    </ClInclude>
+    <ClInclude Include="sample_data.h">
       <Filter>header</Filter>
     </ClInclude>
   </ItemGroup>
