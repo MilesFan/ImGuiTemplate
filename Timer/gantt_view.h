@@ -64,7 +64,7 @@ private:
 	void DrawPlanColumn();                 // 计划名列(跨行标签)
 	void DrawGroupColumn();                // 任务组列(跨行标签)
 	void DrawSubGroupColumn();             // 子任务列(单行标签)
-	void DrawDayWorks(time_t basetime);    // DayWork 单元格、选择/区间高亮、按下启动与移动预览
+	void DrawDayWorks(time_t basetime);    // DayWork 单元格(同人水平相邻合并显示,仅显示效果)、选择/区间高亮、按下启动与移动预览
 
 	// ---- 行模型 ----
 	void RebuildRows();                    // 每帧重建扁平行表

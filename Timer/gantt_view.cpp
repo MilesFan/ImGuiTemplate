@@ -289,12 +289,17 @@ void GanttView::DrawSubGroupColumn()
 
 // ==================== DayWork 网格 ====================
 
+// 显示层合并:同一行内水平相邻(列连号)且同人的单元格合成一个块绘制,人名在块中央只画一次;
+// 仅是显示效果,每个 DayWork 仍是独立单元格(命中测试/选择/拖动逻辑不变),
+// 块内被选中的单元格单独以琥珀底 + 黄框高亮(连续高亮段共用一个框)
 void GanttView::DrawDayWorks(time_t basetime)
 {
 	ImGuiIO& io = ImGui::GetIO();
 	ImDrawList* draw_list = ImGui::GetWindowDrawList();
 	float canvas_width = CanvasP1.x - CanvasP0.x - GridH * LabelCells();
 	float half_canvas_width = ceil(canvas_width / 2 / GridH - 1) * GridH;
+	// 显示列 → 屏幕横坐标(含移动预览偏移的列号)
+	auto CellX = [&](int day) { return CanvasP0.x + Scrolling.x + GridH * (day + LabelCells()) + half_canvas_width; };
 
 	const bool move_mode = LeftDraging && DragFromSelected;
 	const int sel_source_row = HasSelection ? RowOf(SelPlanIdx, SelGroupIdx, SelSubGroupIdx) : -1;
@@ -303,6 +308,17 @@ void GanttView::DrawDayWorks(time_t basetime)
 		SelectionDateRange(sel_min_date, sel_max_date);
 	bool left_press_hit_task = false;   // 本次左键按下是否命中了任务(未命中则按下空白)
 
+	// 单元格显示信息(按显示位置参与合并分组)
+	struct CellVis
+	{
+		int l = 0;               // DayWorks 索引(逻辑单元格)
+		int day = 0;             // 显示列(含移动预览的水平偏移)
+		int row = 0;             // 显示行(含移动预览的垂直吸附)
+		bool selected = false;   // 选中集合成员
+		bool pending = false;    // 区间选择模式:被实时高亮的成员
+	};
+	std::vector<CellVis> cells;
+
 	ImGui::PushClipRect(ImVec2(CanvasP0.x + GridH * LabelCells(), CanvasP0.y + GridV), CanvasP1, false);
 	for (int row = 0; row < (int)Rows.size(); ++row)
 	{
@@ -310,63 +326,124 @@ void GanttView::DrawDayWorks(time_t basetime)
 		if (r.SubGroup < 0)
 			continue;
 		auto& dayworks = Plans[r.Plan].WorkGroups[r.Group].WorkSubGroups[r.SubGroup].DayWorks;
+
+		// 收集本行全部单元格的显示位置与状态(跨行移动后 DayWorks 未必按日期有序,先排序再分组)
+		cells.clear();
 		for (int l = 0; l < (int)dayworks.size(); ++l)
 		{
-			auto& daywork = dayworks[l];
-			auto textsize = ImGui::CalcTextSize(daywork.Person.c_str());
-			double diff_seconds = difftime(daywork.Date, basetime);
-			int diff_days = (int)(diff_seconds / (60 * 60 * 24));
-
-			// 选中集合成员;移动模式下整体偏移(水平整天,垂直吸附到目标任务行)
 			const bool selected = InSelection(r.Plan, r.Group, r.SubGroup, l);
-			// 区间选择模式:按下行内被实时高亮的成员
-			const bool pending_pick = LeftDraging && !DragFromSelected
-				&& r.Plan == DragPlanIdx && r.Group == DragGroupIdx && r.SubGroup == DragSubGroupIdx
-				&& std::find(PendingWorks.begin(), PendingWorks.end(), l) != PendingWorks.end();
-			const bool is_drag_anchor = (move_mode ? selected : pending_pick) && l == DragWorkIdx;
 			const int move_days = (selected && move_mode) ? DragOffsetDays : 0;
 			const int cell_row = (selected && move_mode && DragPreviewRow >= 0) ? DragPreviewRow : row;
+			double diff_seconds = difftime(dayworks[l].Date, basetime);
+			CellVis c;
+			c.l = l;
+			c.day = (int)(diff_seconds / (60 * 60 * 24)) + move_days;
+			c.row = cell_row;
+			c.selected = selected;
+			c.pending = LeftDraging && !DragFromSelected
+				&& r.Plan == DragPlanIdx && r.Group == DragGroupIdx && r.SubGroup == DragSubGroupIdx
+				&& std::find(PendingWorks.begin(), PendingWorks.end(), l) != PendingWorks.end();
+			cells.push_back(c);
+		}
+		std::stable_sort(cells.begin(), cells.end(), [](const CellVis& a, const CellVis& b) { return a.day < b.day; });
 
-			float cell_x = CanvasP0.x + Scrolling.x + GridH * (diff_days + move_days + LabelCells()) + half_canvas_width;
-			float cell_y = GridV * 1 + GridV * cell_row + CanvasP0.y + Scrolling.y;
-			float x0 = cell_x + 3;
-			float y0 = cell_y + 3;
-			float x1 = cell_x + GridH - 5;
-			float y1 = cell_y + GridV - 5;
+		// 沿显示位置聚合"同显示行 + 同人 + 列连号"的连续段,每段合并为一个块绘制
+		for (size_t i0 = 0; i0 < cells.size(); )
+		{
+			size_t i1 = i0 + 1;
+			while (i1 < cells.size()
+				&& cells[i1].row == cells[i0].row
+				&& dayworks[cells[i1].l].Person == dayworks[cells[i1 - 1].l].Person
+				&& cells[i1].day == cells[i1 - 1].day + 1)
+				++i1;
 
-			// 命中测试:鼠标(绝对坐标)是否位于该 DayWork 单元格内
-			const bool cell_hovered = io.MousePos.x >= cell_x && io.MousePos.x < cell_x + GridH
-				&& io.MousePos.y >= cell_y && io.MousePos.y < cell_y + GridV;
-			// 左键按下命中任务:按在已选任务上为"移动"拖动,按在未选任务上为"横向区间选择"拖动
-			if (!LeftDraging && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			const float cell_y = GridV * 1 + GridV * cells[i0].row + CanvasP0.y + Scrolling.y;
+			const float y0 = cell_y + 3;
+			const float y1 = cell_y + GridV - 5;
+			const float block_x0 = CellX(cells[i0].day) + 3;             // 块左边界(含左内边距)
+			const float block_x1 = CellX(cells[i1 - 1].day) + GridH - 5; // 块右边界(含右内边距)
+			auto BlockEdgeL = [&](size_t k) { return CellX(cells[k].day) + (k == i0 ? 3 : 0); };       // 高亮子段左缘(块首留内边距)
+			auto BlockEdgeR = [&](size_t k) { return CellX(cells[k].day) + GridH - (k == i1 - 1 ? 5 : 0); }; // 高亮子段右缘(块尾留内边距)
+
+			// 逐单元格命中测试与左键按下捕获(逻辑与未合并时完全一致)
+			bool run_hover_plain = false;   // 悬停在块内未高亮的单元格上
+			for (size_t i = i0; i < i1; ++i)
 			{
-				LeftDraging = true;
-				DragFromSelected = selected;
-				DragPlanIdx = r.Plan; DragGroupIdx = r.Group; DragSubGroupIdx = r.SubGroup; DragWorkIdx = l;
-				DragAnchorX = io.MousePos.x;
-				DragAnchorY = io.MousePos.y;
-				DragAnchorDate = daywork.Date;
-				DragOffsetDays = 0;
-				DragOffsetRows = 0;
-				DragPreviewRow = DragFromSelected ? row : -1;
-				PendingWorks.assign(1, l);
-				left_press_hit_task = true;
+				const CellVis& c = cells[i];
+				const float cx = CellX(c.day);
+				const bool cell_hovered = io.MousePos.x >= cx && io.MousePos.x < cx + GridH
+					&& io.MousePos.y >= cell_y && io.MousePos.y < cell_y + GridV;
+				// 左键按下命中任务:按在已选任务上为"移动"拖动,按在未选任务上为"横向区间选择"拖动
+				if (!LeftDraging && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+				{
+					LeftDraging = true;
+					DragFromSelected = c.selected;
+					DragPlanIdx = r.Plan; DragGroupIdx = r.Group; DragSubGroupIdx = r.SubGroup; DragWorkIdx = c.l;
+					DragAnchorX = io.MousePos.x;
+					DragAnchorY = io.MousePos.y;
+					DragAnchorDate = dayworks[c.l].Date;
+					DragOffsetDays = 0;
+					DragOffsetRows = 0;
+					DragPreviewRow = DragFromSelected ? row : -1;
+					PendingWorks.assign(1, c.l);
+					left_press_hit_task = true;
+				}
+				if (cell_hovered && !LeftDraging && !(c.selected || c.pending))
+					run_hover_plain = true;
 			}
 
-			if (move_mode && selected)
+			// 块内存在未高亮单元格时先铺灰底(高亮部分随后覆盖)
+			bool any_plain = false;
+			for (size_t i = i0; i < i1; ++i)
+				if (!(cells[i].selected || cells[i].pending)) { any_plain = true; break; }
+			if (any_plain)
+				draw_list->AddRectFilled(ImVec2(block_x0, y0), ImVec2(block_x1, y1), IM_COL32(100, 100, 100, 255), 0);
+
+			// 移动模式下被拖走的成员:原位置画虚影(记录原始行与原始日期)
+			if (move_mode && (DragOffsetDays != 0 || DragOffsetRows != 0))
 			{
-				// 原位置画虚影(记录原始行与原始日期)
-				if (move_days != 0 || DragOffsetRows != 0)
+				for (size_t i = i0; i < i1; ++i)
 				{
-					float ghost_x = cell_x - move_days * GridH + 3;
+					const CellVis& c = cells[i];
+					if (!c.selected)
+						continue;
+					float ghost_x = CellX(c.day - DragOffsetDays) + 3;
 					float ghost_y = GridV * 1 + GridV * row + CanvasP0.y + Scrolling.y + 3;
 					draw_list->AddRect(ImVec2(ghost_x, ghost_y), ImVec2(ghost_x + GridH - 8, ghost_y + GridV - 5), IM_COL32(255, 255, 0, 90));
 				}
-				// 移动成员高亮(被抓住的那个边框更亮)
-				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
-				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, is_drag_anchor ? 255 : 160), 0);
-				if (is_drag_anchor)
+			}
+
+			// 高亮连续子段(选中/区间拖选):琥珀底 + 黄框(含被抓住单元格的子段边框更亮)
+			for (size_t i = i0; i < i1; )
+			{
+				if (!(cells[i].selected || cells[i].pending)) { ++i; continue; }
+				size_t j = i + 1;
+				while (j < i1 && (cells[j].selected || cells[j].pending) && cells[j].day == cells[j - 1].day + 1)
+					++j;
+				bool anchor_here = false;
+				for (size_t k = i; k < j; ++k)
+					if ((move_mode ? cells[k].selected : cells[k].pending) && cells[k].l == DragWorkIdx)
+						anchor_here = true;
+				draw_list->AddRectFilled(ImVec2(BlockEdgeL(i), y0), ImVec2(BlockEdgeR(j - 1), y1), IM_COL32(130, 100, 20, 255), 0);
+				draw_list->AddRect(ImVec2(BlockEdgeL(i), y0), ImVec2(BlockEdgeR(j - 1), y1), IM_COL32(255, 255, 0, anchor_here ? 255 : 160), 0);
+				i = j;
+			}
+
+			// 悬停在块内未高亮单元格上:整块亮边框提示可点击选择
+			if (run_hover_plain)
+			{
+				draw_list->AddRect(ImVec2(block_x0, y0), ImVec2(block_x1, y1), IM_COL32(230, 230, 230, 220), 0);
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+			}
+
+			// 移动模式:被抓住的单元格附加提示(目标行提示带、目标行名、目标日期)
+			if (move_mode)
+			{
+				for (size_t i = i0; i < i1; ++i)
 				{
+					const CellVis& c = cells[i];
+					if (!c.selected || c.l != DragWorkIdx)
+						continue;
 					// 目标行提示带
 					if (DragPreviewRow >= 0 && DragPreviewRow != sel_source_row)
 						draw_list->AddRectFilled(ImVec2(CanvasP0.x + GridH * LabelCells(), cell_y), ImVec2(CanvasP1.x, cell_y + GridV), IM_COL32(255, 255, 0, 25));
@@ -375,18 +452,18 @@ void GanttView::DrawDayWorks(time_t basetime)
 					if (DragPreviewRow >= 0 && DragPreviewRow != sel_source_row)
 					{
 						const RowRef& target = Rows[DragPreviewRow];
-						draw_list->AddText(ImVec2(x1 + 6, cell_y + (GridV - ImGui::GetTextLineHeight()) * 0.5f), IM_COL32(255, 255, 0, 220),
+						draw_list->AddText(ImVec2(BlockEdgeR(i) + 6, cell_y + (GridV - ImGui::GetTextLineHeight()) * 0.5f), IM_COL32(255, 255, 0, 220),
 							Plans[target.Plan].WorkGroups[target.Group].WorkSubGroups[target.SubGroup].Name.c_str());
 					}
 					// 水平拖动时,在集合最左预览单元格上方显示目标日期(多选时为区间)
-					if (move_days != 0)
+					if (DragOffsetDays != 0)
 					{
 						char date_buf[64];
-						time_t nd0 = sel_min_date + (time_t)move_days * 86400;
+						time_t nd0 = sel_min_date + (time_t)DragOffsetDays * 86400;
 						struct tm tm0 = *localtime(&nd0);
 						if (SelWorks.size() > 1)
 						{
-							time_t nd1 = sel_max_date + (time_t)move_days * 86400;
+							time_t nd1 = sel_max_date + (time_t)DragOffsetDays * 86400;
 							struct tm tm1 = *localtime(&nd1);
 							sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d ~ %d-%02d-%02d",
 								tm0.tm_year + 1900, tm0.tm_mon + 1, tm0.tm_mday,
@@ -396,41 +473,24 @@ void GanttView::DrawDayWorks(time_t basetime)
 						{
 							sprintf_s(date_buf, sizeof(date_buf), "%d-%02d-%02d", tm0.tm_year + 1900, tm0.tm_mon + 1, tm0.tm_mday);
 						}
-						float label_x = CanvasP0.x + Scrolling.x + GridH * ((int)(difftime(sel_min_date, basetime) / (60 * 60 * 24)) + move_days + LabelCells()) + half_canvas_width + 3;
+						float label_x = CanvasP0.x + Scrolling.x + GridH * ((int)(difftime(sel_min_date, basetime) / (60 * 60 * 24)) + DragOffsetDays + LabelCells()) + half_canvas_width + 3;
 						float text_y = y0 - 16.0f;
 						if (text_y < CanvasP0.y + GridV + 2.0f) text_y = CanvasP0.y + GridV + 2.0f;
 						draw_list->AddText(ImVec2(label_x, text_y), IM_COL32(255, 255, 0, 255), date_buf);
 					}
 				}
 			}
-			else if (selected)
-			{
-				// 已选中:琥珀底 + 黄框
-				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
-				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, 160), 0);
-			}
-			else if (pending_pick)
-			{
-				// 区间拖选中:实时高亮(按下的锚点边框更亮)
-				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(130, 100, 20, 255), 0);
-				draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 0, l == DragWorkIdx ? 255 : 160), 0);
-			}
-			else
-			{
-				draw_list->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(100, 100, 100, 255), 0);
-				// 悬停提示可点击选择
-				if (cell_hovered && !LeftDraging)
-				{
-					draw_list->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(230, 230, 230, 220), 0);
-					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-				}
-			}
 
+			// 人名合并:整块中央只画一次
+			const std::string& person = dayworks[cells[i0].l].Person;
+			auto textsize = ImGui::CalcTextSize(person.c_str());
 			ImVec2 textPos;
-			textPos.x = cell_x + (GridH - textsize.x) * 0.5f;
+			textPos.x = (block_x0 + block_x1 - textsize.x) * 0.5f;
 			textPos.y = cell_y + (GridV - textsize.y) * 0.5f;
 			// 屏幕坐标直接绘制(与格子同坐标系,不污染窗口布局)
-			draw_list->AddText(textPos, IM_COL32(255, 255, 255, 255), daywork.Person.c_str());
+			draw_list->AddText(textPos, IM_COL32(255, 255, 255, 255), person.c_str());
+
+			i0 = i1;
 		}
 	}
 	ImGui::PopClipRect();
