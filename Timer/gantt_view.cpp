@@ -396,11 +396,11 @@ void GanttView::DrawDayWorks(time_t basetime)
 
 			const float cell_y = GridV * 1 + GridV * cells[i0].row + CanvasP0.y + Scrolling.y;
 			const float y0 = cell_y + 3;
-			const float y1 = cell_y + GridV - 5;
+			const float y1 = cell_y + GridV - 3;
 			const float block_x0 = CellX(cells[i0].day) + 3;             // 块左边界(含左内边距)
-			const float block_x1 = CellX(cells[i1 - 1].day) + GridH - 5; // 块右边界(含右内边距)
+			const float block_x1 = CellX(cells[i1 - 1].day) + GridH - 2; // 块右边界(含右内边距)
 			auto BlockEdgeL = [&](size_t k) { return CellX(cells[k].day) + (k == i0 ? 3 : 0); };       // 高亮子段左缘(块首留内边距)
-			auto BlockEdgeR = [&](size_t k) { return CellX(cells[k].day) + GridH - (k == i1 - 1 ? 5 : 0); }; // 高亮子段右缘(块尾留内边距)
+			auto BlockEdgeR = [&](size_t k) { return CellX(cells[k].day) + GridH - (k == i1 - 1 ? 2 : 0); }; // 高亮子段右缘(块尾留内边距)
 
 			// 逐单元格命中测试与左键按下捕获(逻辑与未合并时完全一致)
 			bool run_hover_plain = false;   // 悬停在块内未高亮的单元格上
