@@ -7,7 +7,8 @@
 // 甘特图视图:封装布局、视图状态、选择/拖动状态与全部绘制逻辑
 // 数据通过构造注入(Plans 引用),视图不拥有数据
 // 交互模型:左键在任务上按下并释放选中单个;按住未选任务横向拖动实时高亮区间,释放后选中;
-// 双击合并显示块选择块内全部任务;按住已选任务左键拖动改变水平/垂直位置;空白处左键或任意右键单击取消选择;中键拖动平移
+// 双击合并显示块选择块内全部任务;按住已选任务左键拖动改变水平/垂直位置;
+// 右键已选任务弹菜单(可删除任务,删除需确认),空白处左键或右键其他位置取消选择;中键拖动平移
 class GanttView
 {
 public:
@@ -57,6 +58,7 @@ private:
 	std::vector<int> PendingWorks;       // 区间模式:实时高亮的 DayWorks 索引
 
 	bool RightPressHadSelection = false; // 右键按下时是否已有选择(决定松开时弹菜单还是本次点击已取消选择)
+	bool PendingDeleteConfirm = false;   // 右键菜单选择删除后,下一帧弹确认对话框(避免在菜单弹窗内嵌套打开)
 
 	// ---- 渲染 ----
 	void DrawCanvas();                     // 画布、输入捕获、中键平移、右键菜单、网格线
@@ -75,6 +77,7 @@ private:
 	void UpdateInteraction();              // 状态机入口
 	void UpdateLeftDrag();                 // 按住左键期间:移动偏移或区间高亮;释放时提交(原地释放=单选)
 	void CommitMove();                     // 提交选中集合的日期与所属任务修改,选择跟随到新位置
+	void DeleteSelected();                 // 删除选中集合中的任务并清空选择
 	void ClearSelection();                 // 清空选择
 	void SelectSingle(int plan, int group, int subgroup, int work);
 	void BuildPendingRange(time_t d0, time_t d1); // 重算区间高亮:按下行内日期落在 [d0,d1] 的所有任务

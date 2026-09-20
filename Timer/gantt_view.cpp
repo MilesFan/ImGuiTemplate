@@ -125,17 +125,53 @@ void GanttView::DrawCanvas()
 	Scrolling.y = roundf(ScrollingReal.y / GridV) * GridV;
 	if (Scrolling.y < min_scroll_y) Scrolling.y = ceilf(min_scroll_y / GridV) * GridV;
 
-	// 右键点击(无拖拽位移)且此前无选择时弹上下文菜单;有选择时本次点击用于取消选择
+	// 右键点击(无拖拽位移)且此前无选择时弹上下文菜单(此时仅"回到今天");
+	// 有选择时的右键由 DrawDayWorks 处理:命中已选任务弹菜单(含删除),否则取消选择
 	ImVec2 drag_delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
 	if (drag_delta.x == 0.0f && drag_delta.y == 0.0f && !RightPressHadSelection)
 		ImGui::OpenPopupOnItemClick("context", ImGuiPopupFlags_MouseButtonRight);
 	if (ImGui::BeginPopup("context"))
 	{
+		// 有选择时菜单提供删除(弹出时选择无法变化,内容按 HasSelection 分支即可)
+		if (HasSelection)
+		{
+			char del_label[48];
+			if (SelWorks.size() > 1)
+				sprintf_s(del_label, sizeof(del_label), "Delete Tasks (%d)", (int)SelWorks.size());
+			else
+				sprintf_s(del_label, sizeof(del_label), "Delete Task");
+			if (ImGui::MenuItem(del_label))
+			{
+				PendingDeleteConfirm = true;   // 下一帧在菜单外弹确认框
+				ImGui::CloseCurrentPopup();
+			}
+		}
 		if (ImGui::MenuItem("Back to Today"))
 		{
 			Scrolling.x = 0;
 			Scrolling.y = 0;
 		}
+		ImGui::EndPopup();
+	}
+
+	// 删除确认对话框:确认后删除选中集合的任务
+	if (PendingDeleteConfirm)
+	{
+		ImGui::OpenPopup("Confirm Delete");
+		PendingDeleteConfirm = false;
+	}
+	if (ImGui::BeginPopupModal("Confirm Delete", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::Text("Delete %d selected task(s)?", (int)SelWorks.size());
+		ImGui::Separator();
+		if (ImGui::Button("Delete", ImVec2(110, 0)))
+		{
+			DeleteSelected();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", ImVec2(110, 0)))
+			ImGui::CloseCurrentPopup();
 		ImGui::EndPopup();
 	}
 
@@ -307,6 +343,7 @@ void GanttView::DrawDayWorks(time_t basetime)
 	if (HasSelection)
 		SelectionDateRange(sel_min_date, sel_max_date);
 	bool left_press_hit_task = false;   // 本次左键按下是否命中了任务(未命中则按下空白)
+	bool right_press_hit_selected = false; // 本次右键按下是否命中了已选任务(命中则弹菜单而非取消选择)
 
 	// 单元格显示信息(按显示位置参与合并分组)
 	struct CellVis
@@ -401,6 +438,9 @@ void GanttView::DrawDayWorks(time_t basetime)
 					}
 					left_press_hit_task = true;
 				}
+				// 右键命中已选任务:不取消选择,改为弹上下文菜单(含删除选项)
+				if (!LeftDraging && cell_hovered && c.selected && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+					right_press_hit_selected = true;
 				if (cell_hovered && !LeftDraging && !(c.selected || c.pending))
 					run_hover_plain = true;
 			}
@@ -513,9 +553,14 @@ void GanttView::DrawDayWorks(time_t basetime)
 		&& io.MousePos.y >= CanvasP0.y && io.MousePos.y < CanvasP1.y;
 	if (mouse_in_canvas && !left_press_hit_task && !LeftDraging && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		ClearSelection();
-	// 右键单击(画布内任意位置):取消选择
+	// 右键单击(画布内):命中已选任务弹上下文菜单(含删除),其他位置取消选择
 	if (mouse_in_canvas && !LeftDraging && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && HasSelection)
-		ClearSelection();
+	{
+		if (right_press_hit_selected)
+			ImGui::OpenPopup("context");
+		else
+			ClearSelection();
+	}
 }
 
 // ==================== 选择与拖动 ====================
@@ -612,6 +657,26 @@ void GanttView::CommitMove()
 	SelWorks.clear();
 	for (int i = 0; i < (int)moved.size(); ++i)
 		SelWorks.push_back(base + i);
+}
+
+// 删除选中集合中的任务(保留同行其余 DayWorks),随后清空选择
+void GanttView::DeleteSelected()
+{
+	if (!HasSelection)
+		return;
+	auto& dayworks = Plans[SelPlanIdx].WorkGroups[SelGroupIdx].WorkSubGroups[SelSubGroupIdx].DayWorks;
+	std::vector<Task::DayWork> kept;
+	kept.reserve(dayworks.size());
+	for (int idx = 0; idx < (int)dayworks.size(); ++idx)
+	{
+		bool is_member = false;
+		for (int m : SelWorks)
+			if (m == idx) { is_member = true; break; }
+		if (!is_member)
+			kept.push_back(std::move(dayworks[idx]));
+	}
+	dayworks = std::move(kept);
+	ClearSelection();
 }
 
 void GanttView::ClearSelection()
