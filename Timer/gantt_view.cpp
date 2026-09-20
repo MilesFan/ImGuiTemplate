@@ -373,19 +373,32 @@ void GanttView::DrawDayWorks(time_t basetime)
 				const float cx = CellX(c.day);
 				const bool cell_hovered = io.MousePos.x >= cx && io.MousePos.x < cx + GridH
 					&& io.MousePos.y >= cell_y && io.MousePos.y < cell_y + GridV;
-				// 左键按下命中任务:按在已选任务上为"移动"拖动,按在未选任务上为"横向区间选择"拖动
+				// 左键按下命中任务:双击合并块选择块内全部任务;
+				// 单击时按在已选任务上为"移动"拖动,按在未选任务上为"横向区间选择"拖动
 				if (!LeftDraging && cell_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 				{
-					LeftDraging = true;
-					DragFromSelected = c.selected;
-					DragPlanIdx = r.Plan; DragGroupIdx = r.Group; DragSubGroupIdx = r.SubGroup; DragWorkIdx = c.l;
-					DragAnchorX = io.MousePos.x;
-					DragAnchorY = io.MousePos.y;
-					DragAnchorDate = dayworks[c.l].Date;
-					DragOffsetDays = 0;
-					DragOffsetRows = 0;
-					DragPreviewRow = DragFromSelected ? row : -1;
-					PendingWorks.assign(1, c.l);
+					if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+					{
+						// 双击:选择该显示块内全部单元格(仅显示合并,每个任务仍是独立单元格)
+						HasSelection = true;
+						SelPlanIdx = r.Plan; SelGroupIdx = r.Group; SelSubGroupIdx = r.SubGroup;
+						SelWorks.clear();
+						for (size_t k = i0; k < i1; ++k)
+							SelWorks.push_back(cells[k].l);
+					}
+					else
+					{
+						LeftDraging = true;
+						DragFromSelected = c.selected;
+						DragPlanIdx = r.Plan; DragGroupIdx = r.Group; DragSubGroupIdx = r.SubGroup; DragWorkIdx = c.l;
+						DragAnchorX = io.MousePos.x;
+						DragAnchorY = io.MousePos.y;
+						DragAnchorDate = dayworks[c.l].Date;
+						DragOffsetDays = 0;
+						DragOffsetRows = 0;
+						DragPreviewRow = DragFromSelected ? row : -1;
+						PendingWorks.assign(1, c.l);
+					}
 					left_press_hit_task = true;
 				}
 				if (cell_hovered && !LeftDraging && !(c.selected || c.pending))
